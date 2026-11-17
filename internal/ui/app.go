@@ -231,7 +231,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ticketLoadedMsg:
 		for _, tab := range m.tabs {
 			if tab.t.ID == msg.t.ID {
-				tab.t = msg.t
+				tab.set(msg.t)
 				tab.loading = false
 			}
 		}

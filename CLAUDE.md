@@ -49,6 +49,7 @@ into this repository.
 | `ticket` | platform-neutral ticket model |
 | `provider` | `Provider` interface and registry |
 | `provider/fake` | in-memory provider with fixture tickets |
+| `provider/jira` | Jira Cloud REST v3 client, field mapping, rich text to Markdown |
 | `profile` | TOML profile schema and loader |
 | `internal/ui` | tabs, table, ticket view, status bar |
 | `internal/hit` | mouse messages to gestures on layer IDs |

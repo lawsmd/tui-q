@@ -14,6 +14,7 @@ import (
 
 	// Platforms available to every build.
 	_ "github.com/lawsmd/tui-q/provider/fake"
+	_ "github.com/lawsmd/tui-q/provider/jira"
 )
 
 type config struct {

@@ -22,6 +22,17 @@ type ticketTab struct {
 	loading bool
 	// offset is the first line of the body drawn.
 	offset int
+
+	// main caches the rendered main column for one width. Rendering
+	// Markdown on every frame would make scrolling slow.
+	main      []string
+	mainWidth int
+}
+
+// set replaces the ticket and drops the rendered cache.
+func (tab *ticketTab) set(t ticket.Ticket) {
+	tab.t = t
+	tab.main = nil
 }
 
 // layers draws the ticket: a row of buttons, then the scrolling body.
@@ -82,6 +93,9 @@ func pad(s string, w int) string {
 // mainLines is the main column: the profile's main fields in order, then
 // the comments when the profile asks for them.
 func (tab *ticketTab) mainLines(m *Model, w int) []string {
+	if tab.main != nil && tab.mainWidth == w {
+		return tab.main
+	}
 	s := m.styles
 	var lines []string
 	add := func(text string) {
@@ -94,9 +108,10 @@ func (tab *ticketTab) mainLines(m *Model, w int) []string {
 			add(s.Title.Render(tab.t.Key + "  " + value))
 		case ticket.FieldBody:
 			if value == "" {
-				value = s.Faint.Render("(no description)")
+				add(s.Faint.Render("(no description)"))
+			} else {
+				lines = append(lines, markdownLines(value, w)...)
 			}
-			add(value)
 		default:
 			lines = append(lines, s.Label.Render(m.prof.Label(name)))
 			add(value)
@@ -107,10 +122,11 @@ func (tab *ticketTab) mainLines(m *Model, w int) []string {
 		lines = append(lines, s.Label.Render("Comments"), "")
 		for _, c := range tab.t.Comments {
 			lines = append(lines, s.Faint.Render(c.Author+"  "+c.Created.Local().Format("2006-01-02 15:04")))
-			add(c.Body)
+			lines = append(lines, markdownLines(c.Body, w)...)
 			lines = append(lines, "")
 		}
 	}
+	tab.main, tab.mainWidth = lines, w
 	return lines
 }
 

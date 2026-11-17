@@ -63,7 +63,7 @@ Provider packages export their HTTP client so an instance action can call any en
 |---|---|---|
 | 0 | Mouse test in the real terminal and multiplexer: click, drag, right-click, wheel, resize, colour | program written; needs a run with a real pointer |
 | 1 | Core skeleton: model, provider interface, fake provider, profile loader, shell, table, ticket view, operation runner, naming guard | done |
-| 2 | Jira provider (read): search, ticket load, field mapping, rich text to Markdown; first instance module | |
+| 2 | Jira provider (read): search, ticket load, field mapping, rich text to Markdown; first instance module | provider done and tested against a stub server; instance module and a run against a real site still to do |
 | 3 | Board layout, drag between lanes, context menu, sideways scrolling | |
 | 4 | Writes: transitions with required-field forms, assignment, field edits | |
 | 5 | `ext.Action` and the first instance-only action | |
