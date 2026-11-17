@@ -1,0 +1,69 @@
+package profile
+
+import (
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestParseAppliesDefaults(t *testing.T) {
+	p, err := Parse(`
+[provider]
+kind = "fake"
+
+[[queue]]
+name = "Mine"
+query = "assignee=me"
+refresh = "90s"
+
+[[queue]]
+name = "Board"
+layout = "board"
+
+[fields.labels]
+id = "field_42"
+label = "Tags"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Queues[0].Layout; got != LayoutTable {
+		t.Errorf("default layout = %q", got)
+	}
+	if got := p.Queues[0].Refresh.Duration; got != 90*time.Second {
+		t.Errorf("refresh = %v", got)
+	}
+	if len(p.Queues[0].Columns) == 0 {
+		t.Error("no default columns")
+	}
+	if p.Queues[1].GroupBy != "status" || len(p.Queues[1].Card) == 0 {
+		t.Errorf("board defaults missing: %+v", p.Queues[1])
+	}
+	if len(p.Ticket.Main) == 0 || len(p.Ticket.Sidebar) == 0 {
+		t.Error("no default ticket layout")
+	}
+	if p.Provider.Fields["labels"] != "field_42" {
+		t.Errorf("field IDs not passed to the provider: %v", p.Provider.Fields)
+	}
+	if p.Label("labels") != "Tags" || p.Label("status") != "Status" {
+		t.Errorf("labels: %q %q", p.Label("labels"), p.Label("status"))
+	}
+}
+
+func TestParseRejectsMistakes(t *testing.T) {
+	cases := map[string]string{
+		"unknown key":  "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\ncolour = \"red\"\n",
+		"no provider":  "[[queue]]\nname = \"A\"\n",
+		"no queue":     "[provider]\nkind = \"fake\"\n",
+		"bad layout":   "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\nlayout = \"grid\"\n",
+		"unnamed":      "[provider]\nkind = \"fake\"\n[[queue]]\nquery = \"x\"\n",
+		"bad duration": "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\nrefresh = \"soon\"\n",
+	}
+	for name, text := range cases {
+		if _, err := Parse(text); err == nil {
+			t.Errorf("%s: no error", name)
+		} else if !strings.Contains(err.Error(), "profile") && name != "bad duration" {
+			t.Errorf("%s: error does not say where it came from: %v", name, err)
+		}
+	}
+}

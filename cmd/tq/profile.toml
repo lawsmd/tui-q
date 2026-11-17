@@ -1,0 +1,29 @@
+# Demo profile for the stock binary. It uses the fake provider, which serves
+# fixture tickets from memory.
+
+[provider]
+kind = "fake"
+
+[[queue]]
+name = "Unassigned"
+query = "status=Open and assignee="
+columns = ["key", "title", "type", "priority", "created"]
+
+[[queue]]
+name = "In progress"
+query = "status=In progress"
+columns = ["key", "title", "assignee", "priority", "labels", "updated"]
+
+[[queue]]
+name = "Everything"
+query = ""
+columns = ["key", "title", "status", "assignee", "priority", "labels", "updated"]
+
+[ticket]
+main = ["title", "body"]
+sidebar = ["status", "type", "assignee", "priority", "labels", "created", "updated"]
+comments = true
+
+[fields.labels]
+type = "list"
+label = "Labels"

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Refuse a commit whose staged files match the private denylist.
+exec go run ./scripts/check-names
