@@ -15,7 +15,13 @@ const (
 	maxColumnWidth = 22
 	minTitleWidth  = 20
 	columnGap      = 2
+	// moreWidth is the width of the menu button at the end of every row,
+	// and of the pair of scroll arrows above it in the header.
+	moreWidth = 5
 )
+
+// moreGlyph is drawn on the menu button of a row or card.
+const moreGlyph = "⋮"
 
 // queue is one top-level tab and the tickets its query returned.
 type queue struct {
@@ -23,23 +29,61 @@ type queue struct {
 	tickets  []ticket.Ticket
 	loading  bool
 	loadedAt time.Time
-	// offset is the index of the first ticket drawn.
+	// offset is the index of the first ticket drawn in a table.
 	offset int
+	// colOffset is how many unpinned table columns are scrolled off to the
+	// left, and laneOffset the same for the lanes of a board.
+	colOffset  int
+	laneOffset int
+	// laneScroll is the first card drawn in each lane, by lane name.
+	laneScroll map[string]int
+
+	// Set by the last draw, for the handlers that run before the next one.
+	cardW, cardH int
 }
 
-// layers draws the queue as a table: a header, then one clickable layer
-// per visible ticket.
+// layers draws the queue in the layout its profile asks for.
 func (q *queue) layers(m *Model, a area) []*lipgloss.Layer {
-	s := m.styles
 	if len(q.tickets) == 0 {
 		text := "No tickets."
 		if q.loading {
 			text = "Loading..."
 		}
-		return []*lipgloss.Layer{lipgloss.NewLayer(s.Faint.Render(" " + text)).X(a.x).Y(a.y + 1).Z(zScenery)}
+		return []*lipgloss.Layer{lipgloss.NewLayer(m.styles.Faint.Render(" " + text)).X(a.x).Y(a.y + 1).Z(zScenery)}
 	}
+	if q.cfg.Layout == profile.LayoutBoard {
+		return q.boardLayers(m, a)
+	}
+	return q.tableLayers(m, a)
+}
 
-	cols := q.columns(a.w - 1)
+// scrollSideways moves the table columns or the board lanes by n places.
+// The next draw clamps the result.
+func (q *queue) scrollSideways(n int) {
+	if q.cfg.Layout == profile.LayoutBoard {
+		q.laneOffset += n
+		return
+	}
+	q.colOffset += n
+}
+
+// tableLayers draws a header, then one clickable layer per visible ticket
+// with a menu button at its right end.
+func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
+	s := m.styles
+	avail := a.w - 1 - moreWidth
+
+	// Scrolling right is allowed only while columns are hidden on the
+	// right, so step back from an offset that hides nothing.
+	q.colOffset = max(q.colOffset, 0)
+	for q.colOffset > 0 {
+		if _, hidden := q.columns(avail, q.colOffset-1); hidden > 0 {
+			break
+		}
+		q.colOffset--
+	}
+	cols, hidden := q.columns(avail, q.colOffset)
+
 	header := make([]string, len(cols))
 	for i, c := range cols {
 		header[i] = fit(m.prof.Label(c.name), c.width)
@@ -48,6 +92,7 @@ func (q *queue) layers(m *Model, a area) []*lipgloss.Layer {
 	layers := []*lipgloss.Layer{
 		lipgloss.NewLayer(s.Header.Render(fit(" "+strings.Join(header, gap), a.w))).X(a.x).Y(a.y).Z(zScenery),
 	}
+	layers = append(layers, arrows(s, a.x+a.w-moreWidth, a.y, q.colOffset > 0, hidden > 0)...)
 
 	visible := a.h - 1
 	q.offset = clamp(q.offset, 0, len(q.tickets)-visible)
@@ -62,10 +107,29 @@ func (q *queue) layers(m *Model, a area) []*lipgloss.Layer {
 		if index%2 == 1 {
 			style = s.RowAlt
 		}
+		y := a.y + 1 + row
 		line := style.Render(fit(" "+strings.Join(cells, gap), a.w))
-		layers = append(layers, lipgloss.NewLayer(line).ID(layerID(idRow, index)).X(a.x).Y(a.y+1+row).Z(zItem))
+		more := style.Inherit(s.More).Render("  " + moreGlyph + "  ")
+		layers = append(layers,
+			lipgloss.NewLayer(line).ID(layerID(idRow, index)).X(a.x).Y(y).Z(zItem),
+			lipgloss.NewLayer(more).ID(layerID(idMore, index)).X(a.x+a.w-moreWidth).Y(y).Z(zButton),
+		)
 	}
 	return layers
+}
+
+// arrows is the pair of sideways scroll buttons, moreWidth cells wide. A
+// direction with nothing to scroll to is drawn faint and cannot be clicked.
+func arrows(s Styles, x, y int, left, right bool) []*lipgloss.Layer {
+	l := lipgloss.NewLayer(s.ArrowOff.Render(" ‹")).X(x).Y(y).Z(zButton)
+	if left {
+		l = lipgloss.NewLayer(s.Arrow.Render(" ‹")).ID(idLeft).X(x).Y(y).Z(zButton)
+	}
+	r := lipgloss.NewLayer(s.ArrowOff.Render("› ")).X(x + 3).Y(y).Z(zButton)
+	if right {
+		r = lipgloss.NewLayer(s.Arrow.Render("› ")).ID(idRight).X(x + 3).Y(y).Z(zButton)
+	}
+	return []*lipgloss.Layer{l, r}
 }
 
 type column struct {
@@ -73,14 +137,25 @@ type column struct {
 	width int
 }
 
-// columns picks the columns that fit in width cells and sizes them. Every
-// column is as wide as its longest value, up to a cap; the title column
-// takes what is left. When the title would get too little room, columns are
-// dropped from the end of the profile's list until it fits.
-func (q *queue) columns(width int) []column {
-	names := append([]string(nil), q.cfg.Columns...)
+// columns picks the columns that fit in width cells and sizes them, and
+// reports how many were left out on the right.
+//
+// Every column is as wide as its longest value, up to a cap; the title
+// column takes what is left. When the title would get too little room,
+// columns are dropped from the end of the list until it fits. The first
+// column and the title are pinned. Offset skips that many of the other
+// columns from the left, which is how the table scrolls sideways.
+func (q *queue) columns(width, offset int) (cols []column, hidden int) {
+	var names []string
+	for i, name := range q.cfg.Columns {
+		if i > 0 && name != ticket.FieldTitle && offset > 0 {
+			offset--
+			continue
+		}
+		names = append(names, name)
+	}
 	for {
-		cols := make([]column, len(names))
+		cols = make([]column, len(names))
 		used := columnGap * (len(names) - 1)
 		flex := -1
 		for i, name := range names {
@@ -104,7 +179,7 @@ func (q *queue) columns(width int) []column {
 		rest := width - used
 		if rest >= minTitleWidth || len(names) <= 2 {
 			cols[flex].width = max(rest, 1)
-			return cols
+			return cols, hidden
 		}
 		// Drop the last column that is not the title.
 		drop := len(names) - 1
@@ -112,5 +187,6 @@ func (q *queue) columns(width int) []column {
 			drop--
 		}
 		names = append(names[:drop], names[drop+1:]...)
+		hidden++
 	}
 }

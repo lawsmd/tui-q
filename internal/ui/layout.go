@@ -9,8 +9,12 @@ import (
 // Z-order of the frame. Lip Gloss gives no order to layers that share a z,
 // so every layer is put on one of these levels above the blank background.
 const (
-	zScenery = 1
-	zItem    = 2
+	zScenery  = 1
+	zItem     = 2
+	zButton   = 3
+	zMenu     = 10
+	zMenuItem = 11
+	zDrag     = 20
 )
 
 // area is a rectangle of the screen handed to a view to draw in.
@@ -41,6 +45,14 @@ func (m *Model) compose() *lipgloss.Compositor {
 	}
 
 	root.AddLayers(m.statusBar(w).Y(h - 1).Z(zItem))
+	if m.menu != nil {
+		root.AddLayers(m.menuLayers()...)
+	}
+	if m.drag != nil && m.activeTab < 0 {
+		if l := m.dragLayer(); l != nil {
+			root.AddLayers(l)
+		}
+	}
 	return lipgloss.NewCompositor(root)
 }
 
@@ -121,6 +133,8 @@ func (m *Model) statusBar(w int) *lipgloss.Layer {
 	} else if failed, ok := m.ops.Failed(); ok {
 		style = s.StatusError
 		left = "Failed: " + failed.Err.Error() + "  (click to dismiss)"
+	} else if m.notice != "" {
+		left = m.notice
 	} else {
 		left = "Ready"
 	}

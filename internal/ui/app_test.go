@@ -27,6 +27,12 @@ columns = ["key", "title", "type", "priority", "labels", "created"]
 name = "All"
 query = ""
 
+[[queue]]
+name = "Board"
+query = ""
+layout = "board"
+lanes = ["Open", "In progress", "Waiting", "Done"]
+
 [ticket]
 comments = true
 `
@@ -159,24 +165,201 @@ func TestWheelScrollsAndClamps(t *testing.T) {
 	}
 }
 
+// checkFrames draws the model at a spread of pane sizes and fails when a
+// frame is not exactly the size of the pane.
+func checkFrames(t *testing.T, m *Model, what string) {
+	t.Helper()
+	for w := minWidth; w <= 160; w += 7 {
+		for _, h := range []int{minHeight, 15, 40} {
+			send(t, m, tea.WindowSizeMsg{Width: w, Height: h})
+			out := m.View().Content
+			if gw, gh := lipgloss.Width(out), lipgloss.Height(out); gw != w || gh != h {
+				t.Fatalf("%s: pane %dx%d drew %dx%d", what, w, h, gw, gh)
+			}
+		}
+	}
+}
+
 func TestFrameMatchesPaneAtEverySize(t *testing.T) {
 	m := newModel(t, 110, 30)
 	clickLayer(t, m, layerID(idRow, 0))
-	for _, showTicket := range []bool{false, true} {
-		if !showTicket {
-			m.activeTab = -1
-		} else {
-			m.activeTab = 0
+	checkFrames(t, m, "ticket")
+	m.activeTab = -1
+	checkFrames(t, m, "table")
+
+	m.activeQueue = 2
+	checkFrames(t, m, "board")
+	m.openMenu(m.queues[2].tickets[0], 150, 38)
+	checkFrames(t, m, "menu")
+	m.menu = nil
+	m.drag = &drag{index: 0, x: 159, y: 39}
+	checkFrames(t, m, "drag")
+}
+
+func TestBoardGroupsTicketsIntoLanes(t *testing.T) {
+	m := newModel(t, 130, 40)
+	clickLayer(t, m, layerID(idQueueTab, 2))
+	out := screen(m)
+	for _, want := range []string{"Open  5", "In progress", "Waiting", "Done", "DEMO-101", "╭"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("board lacks %q\n%s", want, out)
 		}
-		for w := minWidth; w <= 160; w += 7 {
-			for _, h := range []int{minHeight, 15, 40} {
-				send(t, m, tea.WindowSizeMsg{Width: w, Height: h})
-				out := m.View().Content
-				if gw, gh := lipgloss.Width(out), lipgloss.Height(out); gw != w || gh != h {
-					t.Fatalf("ticket=%v pane %dx%d drew %dx%d", showTicket, w, h, gw, gh)
-				}
-			}
+	}
+	clickLayer(t, m, layerID(idCard, 0))
+	if len(m.tabs) != 1 {
+		t.Fatal("clicking a card did not open the ticket")
+	}
+}
+
+func TestBoardScrollsSidewaysWhenNarrow(t *testing.T) {
+	m := newModel(t, 60, 30) // room for two of the four lanes
+	clickLayer(t, m, layerID(idQueueTab, 2))
+	if out := screen(m); strings.Contains(out, "Waiting") {
+		t.Fatalf("third lane drawn in a 60-wide pane\n%s", out)
+	}
+	clickLayer(t, m, idRight)
+	clickLayer(t, m, idRight)
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyRight}) // one more than there is room for
+	out := screen(m)
+	if !strings.Contains(out, "Done") || strings.Contains(out, "Open  5") {
+		t.Fatalf("board did not scroll to its last lanes\n%s", out)
+	}
+	if m.queues[2].laneOffset != 2 {
+		t.Fatalf("laneOffset=%d, want it clamped to 2", m.queues[2].laneOffset)
+	}
+}
+
+// dragTo presses on one layer, moves to the bottom of another and releases
+// there.
+func dragTo(t *testing.T, m *Model, from, to string) {
+	t.Helper()
+	m.View()
+	a, b := m.comp.GetLayer(from), m.comp.GetLayer(to)
+	if a == nil || b == nil {
+		t.Fatalf("layers %q, %q not both on screen", from, to)
+	}
+	ax, ay := a.GetX()+2, a.GetY()+2
+	bx, by := b.GetX()+3, b.GetY()+b.Height()-1
+	send(t, m, tea.MouseClickMsg{X: ax, Y: ay, Button: tea.MouseLeft})
+	send(t, m, tea.MouseMotionMsg{X: ax + 1, Y: ay, Button: tea.MouseLeft})
+	m.View()
+	send(t, m, tea.MouseMotionMsg{X: bx, Y: by, Button: tea.MouseLeft})
+	m.View()
+	if m.drag == nil {
+		t.Fatal("no drag in progress after moving a pressed card")
+	}
+	send(t, m, tea.MouseReleaseMsg{X: bx, Y: by, Button: tea.MouseLeft})
+}
+
+func TestDragCardToAnotherLane(t *testing.T) {
+	m := newModel(t, 130, 40)
+	clickLayer(t, m, layerID(idQueueTab, 2))
+	q := m.queues[2]
+	card := q.lanes()[0].tickets[0]
+	key := q.tickets[card].Key
+
+	dragTo(t, m, layerID(idCard, card), layerID(idLane, 2))
+	if m.drag != nil {
+		t.Fatal("drag still in progress after the drop")
+	}
+	if len(m.tabs) != 0 {
+		t.Fatal("a drag opened the ticket")
+	}
+	if want := "Dropped " + key + " on Waiting"; !strings.Contains(screen(m), want) {
+		t.Fatalf("status bar lacks %q\n%s", want, screen(m))
+	}
+
+	// A drop on the lane the card came from does nothing.
+	m.notice = ""
+	dragTo(t, m, layerID(idCard, card), layerID(idLane, 0))
+	if m.notice != "" {
+		t.Fatalf("drop on the same lane reported %q", m.notice)
+	}
+}
+
+func TestDraggedCardFollowsThePointer(t *testing.T) {
+	m := newModel(t, 130, 40)
+	clickLayer(t, m, layerID(idQueueTab, 2))
+	q := m.queues[2]
+	card := q.lanes()[0].tickets[0]
+	m.View()
+	l := m.comp.GetLayer(layerID(idCard, card))
+	x, y := l.GetX()+2, l.GetY()+2
+	send(t, m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	send(t, m, tea.MouseMotionMsg{X: x + 60, Y: y + 10, Button: tea.MouseLeft})
+	m.View()
+	// The key is on screen twice: the card left behind and the carried copy.
+	if n := strings.Count(screen(m), q.tickets[card].Key); n != 2 {
+		t.Fatalf("key drawn %d times during a drag, want 2\n%s", n, screen(m))
+	}
+	// The carried copy must not hide the lane from the hit test.
+	if kind, _ := splitID(m.comp.Hit(x+60, y+10).ID()); kind != idLane && kind != idCard {
+		t.Fatalf("pointer hits %q under the carried card", kind)
+	}
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.drag != nil {
+		t.Fatal("esc did not cancel the drag")
+	}
+}
+
+func TestMenuOpensAndRuns(t *testing.T) {
+	m := newModel(t, 110, 30)
+
+	// The menu button on a row.
+	clickLayer(t, m, layerID(idMore, 1))
+	if m.menu == nil {
+		t.Fatal("menu button did not open the menu")
+	}
+	out := screen(m)
+	for _, want := range []string{"Open in browser", "Copy key", "DEMO-102"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("menu lacks %q\n%s", want, out)
 		}
+	}
+	// A click elsewhere closes it and does not reach what is underneath.
+	clickLayer(t, m, idRefresh)
+	if m.menu != nil || len(m.tabs) != 0 {
+		t.Fatalf("click outside: menu open=%v, tabs=%d", m.menu != nil, len(m.tabs))
+	}
+
+	// Right-click and middle-click on a row.
+	for _, button := range []tea.MouseButton{tea.MouseRight, tea.MouseMiddle} {
+		m.View()
+		row := m.comp.GetLayer(layerID(idRow, 2))
+		send(t, m, tea.MouseClickMsg{X: row.GetX() + 4, Y: row.GetY(), Button: button})
+		if m.menu == nil || m.menu.title != "DEMO-103" {
+			t.Fatalf("button %v did not open the menu for the row", button)
+		}
+		m.menu = nil
+	}
+
+	clickLayer(t, m, layerID(idMore, 2))
+	clickLayer(t, m, layerID(idMenuItem, 0))
+	if m.menu != nil || len(m.tabs) != 1 || m.tabs[0].t.Key != "DEMO-103" {
+		t.Fatalf("Open: menu open=%v, tabs=%d", m.menu != nil, len(m.tabs))
+	}
+}
+
+func TestTableScrollsSideways(t *testing.T) {
+	m := newModel(t, 60, 20)
+	out := screen(m)
+	if strings.Contains(out, "Created") {
+		t.Fatalf("last column drawn in a 60-wide pane\n%s", out)
+	}
+	for i := 0; i < 6; i++ {
+		send(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
+		m.View()
+	}
+	out = screen(m)
+	if !strings.Contains(out, "Created") || !strings.Contains(out, "DEMO-101") || !strings.Contains(out, "Title") {
+		t.Fatalf("scrolled table lacks the last column, the key or the title\n%s", out)
+	}
+	for i := 0; i < 6; i++ {
+		send(t, m, tea.KeyPressMsg{Code: tea.KeyLeft})
+		m.View()
+	}
+	if m.queues[0].colOffset != 0 {
+		t.Fatalf("colOffset=%d after scrolling back, want 0", m.queues[0].colOffset)
 	}
 }
 

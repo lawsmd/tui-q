@@ -17,7 +17,9 @@ looks.
 - Windows, macOS and Linux.
 - Writes in the first version: status transitions, assignment and field edits, custom
   actions. Comments are read-only; every ticket has "open in browser".
-- A single click opens a ticket. A right-click opens a context menu.
+- A single click opens a ticket. The context menu opens from a right-click, a
+  middle-click, or the menu button on every row and card. The button is there because a
+  terminal multiplexer can keep right-clicks for its own menus.
 - Credentials come from environment variables named in the profile.
 
 ## Extension API
@@ -51,8 +53,10 @@ Provider packages export their HTTP client so an instance action can call any en
   drag, drop and wheel against layer IDs.
 - A dragged card is drawn as a top layer with no ID, so the hit test reports the lane
   under it.
-- Tables drop low-priority columns when narrow, then scroll sideways. Boards scroll
-  sideways by lane and vertically inside a lane. The ticket sidebar moves under the main
+- Tables drop low-priority columns when narrow, then scroll sideways with the first
+  column and the title pinned. Boards scroll sideways by lane and vertically inside a
+  lane. Sideways scrolling is on the arrow buttons, the arrow keys, a sideways wheel and
+  shift with the wheel. The ticket sidebar moves under the main
   column when narrow.
 - Reads show in the status bar and leave input free. Writes lock input until they end.
   Failures stay in the status bar until dismissed.
@@ -61,10 +65,10 @@ Provider packages export their HTTP client so an instance action can call any en
 
 | Phase | Work | State |
 |---|---|---|
-| 0 | Mouse test in the real terminal and multiplexer: click, drag, right-click, wheel, resize, colour | program written; needs a run with a real pointer |
+| 0 | Mouse test in the real terminal and multiplexer: click, drag, right-click, wheel, resize, colour | done; everything reaches the program except right-click, which the multiplexer keeps |
 | 1 | Core skeleton: model, provider interface, fake provider, profile loader, shell, table, ticket view, operation runner, naming guard | done |
-| 2 | Jira provider (read): search, ticket load, field mapping, rich text to Markdown; first instance module | provider done and tested against a stub server; instance module and a run against a real site still to do |
-| 3 | Board layout, drag between lanes, context menu, sideways scrolling | |
+| 2 | Jira provider (read): search, ticket load, field mapping, rich text to Markdown; first instance module | done; `tq check` reads every queue of a profile once without the interface |
+| 3 | Board layout, drag between lanes, context menu, sideways scrolling | done; a drop reports the move and changes nothing until phase 4 |
 | 4 | Writes: transitions with required-field forms, assignment, field edits | |
 | 5 | `ext.Action` and the first instance-only action | |
 | 6 | Azure DevOps provider and a second instance; macOS and Linux run | |

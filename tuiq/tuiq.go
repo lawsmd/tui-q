@@ -5,6 +5,7 @@ package tuiq
 
 import (
 	"errors"
+	"os"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -31,7 +32,9 @@ func WithProfile(text string) Option {
 	return func(c *config) { c.profileText = text }
 }
 
-// Run starts the interface and returns when the user quits.
+// Run starts the interface and returns when the user quits. When the
+// program's first argument is "check", Run reads every queue once, prints
+// the result and returns without starting the interface.
 func Run(opts ...Option) error {
 	var cfg config
 	for _, opt := range opts {
@@ -47,6 +50,9 @@ func Run(opts ...Option) error {
 	prov, err := provider.New(prof.Provider)
 	if err != nil {
 		return err
+	}
+	if len(os.Args) > 1 && os.Args[1] == "check" {
+		return check(os.Stdout, prof, prov)
 	}
 	_, err = tea.NewProgram(ui.New(prof, prov)).Run()
 	return err

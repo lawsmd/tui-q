@@ -14,7 +14,9 @@ type Kind int
 const (
 	// Click is a left press and release with no movement between them.
 	Click Kind = iota
-	// RightClick is reported on the press of the right button.
+	// RightClick is reported on the press of the right button, and of the
+	// middle button, which stands in where something between the terminal
+	// and the program keeps right-clicks for itself.
 	RightClick
 	// DragStart is reported once, when a held left button first moves.
 	DragStart
@@ -65,7 +67,7 @@ func (t *Tracker) Handle(msg tea.MouseMsg, at At) []Event {
 		switch m.Button {
 		case tea.MouseLeft:
 			*t = Tracker{pressed: true, id: at(m.X, m.Y), x: m.X, y: m.Y}
-		case tea.MouseRight:
+		case tea.MouseRight, tea.MouseMiddle:
 			id := at(m.X, m.Y)
 			return []Event{{Kind: RightClick, ID: id, Over: id, X: m.X, Y: m.Y}}
 		}
@@ -112,6 +114,10 @@ func (t *Tracker) Handle(msg tea.MouseMsg, at At) []Event {
 			ev.DX = 1
 		default:
 			return nil
+		}
+		// Shift turns an up-and-down wheel into a sideways one.
+		if m.Mod.Contains(tea.ModShift) {
+			ev.DX, ev.DY = ev.DY, 0
 		}
 		return []Event{ev}
 	}

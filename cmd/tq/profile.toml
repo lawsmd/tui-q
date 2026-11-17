@@ -19,6 +19,14 @@ name = "Everything"
 query = ""
 columns = ["key", "title", "status", "assignee", "priority", "labels", "updated"]
 
+[[queue]]
+name = "Board"
+query = ""
+layout = "board"
+group_by = "status"
+lanes = ["Open", "In progress", "Waiting", "Done"]
+card = ["key", "title", "assignee", "priority"]
+
 [ticket]
 main = ["title", "body"]
 sidebar = ["status", "type", "assignee", "priority", "labels", "created", "updated"]

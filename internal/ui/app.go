@@ -39,6 +39,13 @@ const (
 	idRefresh   = "refresh"
 	idStatus    = "status"
 	idOpen      = "open"
+	idMore      = "more"
+	idLeft      = "left"
+	idRight     = "right"
+	idLane      = "lane"
+	idCard      = "card"
+	idMenu      = "menu"
+	idMenuItem  = "menuitem"
 )
 
 func layerID(kind string, n int) string { return kind + ":" + strconv.Itoa(n) }
@@ -85,6 +92,14 @@ type Model struct {
 	mouse    hit.Tracker
 	spin     spinner.Model
 	spinning bool
+
+	// menu is the open context menu, and drag the card being carried.
+	// Both are nil most of the time.
+	menu *menu
+	drag *drag
+	// notice is a one-line message for the status bar. The next click
+	// clears it.
+	notice string
 
 	// comp is the last frame drawn. Hit tests run against it, since it is
 	// what the user was looking at when they clicked.
@@ -185,7 +200,11 @@ func (m *Model) openInBrowser() tea.Cmd {
 	if m.activeTab < 0 {
 		return nil
 	}
-	t := m.tabs[m.activeTab].t
+	return m.openURL(m.tabs[m.activeTab].t)
+}
+
+// openURL shows a ticket's web page in the default browser.
+func (m *Model) openURL(t ticket.Ticket) tea.Cmd {
 	if t.URL == "" {
 		return nil
 	}
@@ -242,6 +261,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		if m.ops.Locked() {
 			m.mouse.Cancel()
+			m.drag = nil
 			return m, nil
 		}
 		var cmds []tea.Cmd
@@ -287,7 +307,24 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		m.activeQueue = (m.activeQueue + len(m.queues) - 1) % len(m.queues)
 		m.activeTab = -1
 	case "esc":
-		m.activeTab = -1
+		// Esc backs out of one thing at a time.
+		switch {
+		case m.menu != nil:
+			m.menu = nil
+		case m.drag != nil:
+			m.drag = nil
+			m.mouse.Cancel()
+		default:
+			m.activeTab = -1
+		}
+	case "left":
+		if m.activeTab < 0 {
+			m.queues[m.activeQueue].scrollSideways(-1)
+		}
+	case "right":
+		if m.activeTab < 0 {
+			m.queues[m.activeQueue].scrollSideways(1)
+		}
 	case "ctrl+w":
 		m.closeTab(m.activeTab)
 	case "o":
@@ -315,17 +352,72 @@ func (m *Model) at(x, y int) string {
 }
 
 func (m *Model) gesture(ev hit.Event) tea.Cmd {
+	if m.menu != nil {
+		return m.menuGesture(ev)
+	}
 	switch ev.Kind {
 	case hit.Click:
-		return m.click(ev.ID)
+		m.notice = ""
+		return m.click(ev)
+	case hit.RightClick:
+		m.menuFor(ev)
 	case hit.Wheel:
-		m.scroll(ev.DY * wheelStep)
+		m.scroll(ev)
+	case hit.DragStart:
+		m.startDrag(ev)
+	case hit.DragMove:
+		if m.drag != nil {
+			m.drag.x, m.drag.y = ev.X, ev.Y
+			m.drag.over = m.queues[m.activeQueue].laneName(ev.Over)
+		}
+	case hit.Drop:
+		m.drop(ev)
 	}
 	return nil
 }
 
-func (m *Model) click(id string) tea.Cmd {
-	kind, n := splitID(id)
+// menuGesture handles the mouse while the context menu is open. A click on
+// an item runs it; a click anywhere but the menu closes it and does nothing
+// else.
+func (m *Model) menuGesture(ev hit.Event) tea.Cmd {
+	kind, n := splitID(ev.ID)
+	switch ev.Kind {
+	case hit.Click:
+		if kind == idMenu {
+			return nil
+		}
+		items := m.menu.items
+		m.menu = nil
+		if kind == idMenuItem && n >= 0 && n < len(items) {
+			return items[n].run()
+		}
+	case hit.RightClick:
+		m.menu = nil
+		m.menuFor(ev)
+	case hit.Wheel:
+		m.menu = nil
+	}
+	return nil
+}
+
+// menuFor opens the context menu when the gesture is on a ticket.
+func (m *Model) menuFor(ev hit.Event) {
+	if m.activeTab >= 0 {
+		return
+	}
+	kind, n := splitID(ev.ID)
+	q := m.queues[m.activeQueue]
+	switch kind {
+	case idRow, idCard, idMore:
+		if n >= 0 && n < len(q.tickets) {
+			m.notice = ""
+			m.openMenu(q.tickets[n], ev.X, ev.Y)
+		}
+	}
+}
+
+func (m *Model) click(ev hit.Event) tea.Cmd {
+	kind, n := splitID(ev.ID)
 	switch kind {
 	case idQueueTab:
 		if n >= 0 && n < len(m.queues) {
@@ -338,11 +430,17 @@ func (m *Model) click(id string) tea.Cmd {
 		}
 	case idTabClose:
 		m.closeTab(n)
-	case idRow:
+	case idRow, idCard:
 		q := m.queues[m.activeQueue]
 		if n >= 0 && n < len(q.tickets) {
 			return m.openTicket(q.tickets[n])
 		}
+	case idMore:
+		m.menuFor(ev)
+	case idLeft:
+		m.queues[m.activeQueue].scrollSideways(-1)
+	case idRight:
+		m.queues[m.activeQueue].scrollSideways(1)
 	case idRefresh:
 		return m.refresh()
 	case idStatus:
@@ -353,12 +451,56 @@ func (m *Model) click(id string) tea.Cmd {
 	return nil
 }
 
-func (m *Model) scroll(rows int) {
+// scroll applies one wheel notch to whatever is under the pointer.
+func (m *Model) scroll(ev hit.Event) {
 	if m.activeTab >= 0 {
-		m.tabs[m.activeTab].offset += rows
+		m.tabs[m.activeTab].offset += ev.DY * wheelStep
 		return
 	}
-	m.queues[m.activeQueue].offset += rows
+	q := m.queues[m.activeQueue]
+	if ev.DX != 0 {
+		q.scrollSideways(ev.DX)
+		return
+	}
+	if q.cfg.Layout != profile.LayoutBoard {
+		q.offset += ev.DY * wheelStep
+		return
+	}
+	// On a board the wheel moves the cards of the lane it is over.
+	if name := q.laneName(ev.ID); name != "" && q.laneScroll != nil {
+		q.laneScroll[strings.ToLower(name)] += ev.DY
+	}
+}
+
+// startDrag picks up a card. A drag that starts anywhere else is ignored.
+func (m *Model) startDrag(ev hit.Event) {
+	kind, n := splitID(ev.ID)
+	if kind != idCard || m.activeTab >= 0 || m.comp == nil {
+		return
+	}
+	layer := m.comp.GetLayer(ev.ID)
+	if layer == nil || n < 0 || n >= len(m.queues[m.activeQueue].tickets) {
+		return
+	}
+	m.notice = ""
+	m.drag = &drag{index: n, x: ev.X, y: ev.Y, dx: ev.X - layer.GetX(), dy: ev.Y - layer.GetY()}
+}
+
+// drop ends a drag. Moving a ticket to another lane is a write, and writes
+// are not built yet, so for now the drop is only reported.
+func (m *Model) drop(ev hit.Event) {
+	d := m.drag
+	m.drag = nil
+	q := m.queues[m.activeQueue]
+	if d == nil || d.index >= len(q.tickets) {
+		return
+	}
+	t := q.tickets[d.index]
+	target := q.laneName(ev.Over)
+	if target == "" || strings.EqualFold(target, q.laneOf(t)) {
+		return
+	}
+	m.notice = fmt.Sprintf("Dropped %s on %s. Moving a ticket is not built yet.", t.Key, target)
 }
 
 // View draws the frame and keeps it for hit testing.

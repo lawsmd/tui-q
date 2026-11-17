@@ -23,6 +23,27 @@ type Styles struct {
 	Row    lipgloss.Style
 	RowAlt lipgloss.Style
 
+	// More is the menu button on a row or card. Arrow is a sideways scroll
+	// button, and ArrowOff the same button with nothing left to scroll to.
+	More     lipgloss.Style
+	Arrow    lipgloss.Style
+	ArrowOff lipgloss.Style
+
+	LaneHeader lipgloss.Style
+	// LaneTarget marks the lane a dragged card would be dropped on.
+	LaneTarget lipgloss.Style
+	CardBorder lipgloss.Style
+	CardKey    lipgloss.Style
+	CardText   lipgloss.Style
+	// CardGhost draws a card in its old place while it is being dragged,
+	// and CardDrag the copy that follows the pointer.
+	CardGhost lipgloss.Style
+	CardDrag  lipgloss.Style
+
+	MenuBorder lipgloss.Style
+	MenuTitle  lipgloss.Style
+	MenuItem   lipgloss.Style
+
 	Title lipgloss.Style
 	Label lipgloss.Style
 	Faint lipgloss.Style
@@ -59,6 +80,22 @@ func DefaultStyles() Styles {
 		Header: lipgloss.NewStyle().Foreground(accent).Bold(true),
 		Row:    lipgloss.NewStyle().Foreground(text),
 		RowAlt: lipgloss.NewStyle().Foreground(text).Background(zebra),
+
+		More:     lipgloss.NewStyle().Foreground(dim),
+		Arrow:    lipgloss.NewStyle().Foreground(accent).Bold(true),
+		ArrowOff: lipgloss.NewStyle().Foreground(barAlt),
+
+		LaneHeader: lipgloss.NewStyle().Background(barAlt).Foreground(text).Bold(true),
+		LaneTarget: lipgloss.NewStyle().Background(accent).Foreground(onLight).Bold(true),
+		CardBorder: lipgloss.NewStyle().Foreground(dim),
+		CardKey:    lipgloss.NewStyle().Foreground(accent).Bold(true),
+		CardText:   lipgloss.NewStyle().Foreground(text),
+		CardGhost:  lipgloss.NewStyle().Foreground(barAlt),
+		CardDrag:   lipgloss.NewStyle().Foreground(warn).Background(bar),
+
+		MenuBorder: lipgloss.NewStyle().Foreground(accent).Background(bar),
+		MenuTitle:  lipgloss.NewStyle().Foreground(accent).Background(bar).Bold(true),
+		MenuItem:   lipgloss.NewStyle().Foreground(text).Background(bar),
 
 		Title: lipgloss.NewStyle().Foreground(text).Bold(true),
 		Label: lipgloss.NewStyle().Foreground(accent),
@@ -108,4 +145,17 @@ func clamp(v, lo, hi int) int {
 		return hi
 	}
 	return v
+}
+
+// box draws a rounded border around lines. Every line must already be
+// w-4 cells wide; the border and one cell of padding on each side make the
+// result w wide. Border draws the frame and the padding.
+func box(lines []string, w int, border lipgloss.Style) []string {
+	rule := strings.Repeat("─", max(w-2, 0))
+	out := make([]string, 0, len(lines)+2)
+	out = append(out, border.Render("╭"+rule+"╮"))
+	for _, line := range lines {
+		out = append(out, border.Render("│ ")+line+border.Render(" │"))
+	}
+	return append(out, border.Render("╰"+rule+"╯"))
 }

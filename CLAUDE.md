@@ -51,7 +51,7 @@ into this repository.
 | `provider/fake` | in-memory provider with fixture tickets |
 | `provider/jira` | Jira Cloud REST v3 client, field mapping, rich text to Markdown |
 | `profile` | TOML profile schema and loader |
-| `internal/ui` | tabs, table, ticket view, status bar |
+| `internal/ui` | tabs, table, board, context menu, ticket view, status bar |
 | `internal/hit` | mouse messages to gestures on layer IDs |
 | `internal/ops` | operation runner behind the status bar |
 | `internal/browser` | opens a URL in the default browser |
@@ -74,6 +74,7 @@ into this repository.
 
 ```
 go run ./cmd/tq            run the demo against the fake provider
+go run ./cmd/tq check      read every queue once and print it, with no interface
 go test ./...              tests
 go vet ./...               static checks
 git config core.hooksPath .githooks    turn the hooks on in a new clone
