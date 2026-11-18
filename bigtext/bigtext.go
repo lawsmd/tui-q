@@ -1,103 +1,113 @@
-// Package bigtext draws a short text in a FIGlet font, for headings that
-// should stand out. The fonts are in the fonts directory and are at most
-// MaxHeight rows tall.
+// Package bigtext draws a short text in large letters, for headings that
+// should stand out. A letter is a grid of dots six high, and two dots
+// share a cell of the terminal, so the text is three rows tall.
 package bigtext
 
 import (
-	"embed"
 	"fmt"
-	"path"
-	"sort"
 	"strings"
-	"sync"
-
-	"charm.land/lipgloss/v2"
-	"github.com/lukesampson/figlet/figletlib"
+	"unicode"
 )
 
-// MaxHeight is the most rows a font may have.
-const MaxHeight = 3
+// Height is the number of rows of a drawn text.
+const Height = 3
 
-// maxWidth is wide enough that the layout never wraps a heading.
-const maxWidth = 1000
+// Block is the name of the one font: solid capitals.
+const Block = "block"
 
-//go:embed fonts/*.flf
-var files embed.FS
-
-var (
-	mu     sync.Mutex
-	parsed = map[string]*figletlib.Font{}
-)
-
-// Fonts lists the names of the fonts in order.
-func Fonts() []string {
-	entries, _ := files.ReadDir("fonts")
-	var names []string
-	for _, e := range entries {
-		names = append(names, strings.TrimSuffix(e.Name(), path.Ext(e.Name())))
-	}
-	sort.Strings(names)
-	return names
-}
+// Fonts lists the names of the fonts.
+func Fonts() []string { return []string{Block} }
 
 // Has reports whether there is a font with the name.
-func Has(font string) bool {
-	_, err := files.ReadFile("fonts/" + font + ".flf")
-	return err == nil
-}
-
-func load(font string) (f *figletlib.Font, err error) {
-	mu.Lock()
-	defer mu.Unlock()
-	if f, ok := parsed[font]; ok {
-		return f, nil
-	}
-	data, err := files.ReadFile("fonts/" + font + ".flf")
-	if err != nil {
-		return nil, fmt.Errorf("bigtext: no font named %q", font)
-	}
-	// The parser indexes past the end of a file that is cut short.
-	defer func() {
-		if r := recover(); r != nil {
-			f, err = nil, fmt.Errorf("bigtext: font %q: %v", font, r)
-		}
-	}()
-	f, err = figletlib.ReadFontFromBytes(data)
-	if err != nil {
-		return nil, fmt.Errorf("bigtext: font %q: %w", font, err)
-	}
-	parsed[font] = f
-	return f, nil
-}
+func Has(font string) bool { return font == Block }
 
 // Render draws the text in the font. The rows it returns have the same
-// width, and blank rows at the bottom are left out. It fails when the
-// font is unknown or draws nothing for the text.
+// width. A lower-case letter is drawn as its capital. It fails when the
+// font is unknown or has no shape for a character of the text.
 func Render(font, text string) ([]string, error) {
-	f, err := load(font)
-	if err != nil {
-		return nil, err
+	if !Has(font) {
+		return nil, fmt.Errorf("bigtext: no font named %q", font)
 	}
-	s := f.Settings()
-	lines := figletlib.GetLines(text, f, maxWidth, s)
-	if len(lines) != 1 {
-		return nil, fmt.Errorf("bigtext: %q does not fit on one line", text)
+	if text == "" {
+		return nil, fmt.Errorf("bigtext: no text to draw")
 	}
-	var rows []string
-	width := 0
-	for _, r := range lines[0].Art() {
-		row := strings.TrimRight(strings.ReplaceAll(string(r), string(s.HardBlank()), " "), " \r")
-		rows = append(rows, row)
-		width = max(width, lipgloss.Width(row))
+	// dots holds the six lines of dots of the whole text.
+	var dots [2 * Height]strings.Builder
+	for i, r := range text {
+		g, ok := glyphs[unicode.ToUpper(r)]
+		if !ok {
+			return nil, fmt.Errorf("bigtext: font %q has no %q", font, r)
+		}
+		for y := range dots {
+			if i > 0 {
+				dots[y].WriteByte('.')
+			}
+			dots[y].WriteString(g[y])
+		}
 	}
-	for len(rows) > 0 && rows[len(rows)-1] == "" {
-		rows = rows[:len(rows)-1]
-	}
-	if width == 0 || len(rows) > MaxHeight {
-		return nil, fmt.Errorf("bigtext: font %q cannot draw %q", font, text)
-	}
-	for i, row := range rows {
-		rows[i] = row + strings.Repeat(" ", width-lipgloss.Width(row))
+	rows := make([]string, Height)
+	for row := range rows {
+		top, bottom := dots[2*row].String(), dots[2*row+1].String()
+		var b strings.Builder
+		for x := range top {
+			switch {
+			case top[x] == '#' && bottom[x] == '#':
+				b.WriteRune('█')
+			case top[x] == '#':
+				b.WriteRune('▀')
+			case bottom[x] == '#':
+				b.WriteRune('▄')
+			default:
+				b.WriteByte(' ')
+			}
+		}
+		rows[row] = b.String()
 	}
 	return rows, nil
+}
+
+// glyphs maps a character to its six lines of dots, top to bottom. A '#'
+// is a filled dot. The lines of one glyph have the same length.
+var glyphs = map[rune][2 * Height]string{
+	' ': {"..", "..", "..", "..", "..", ".."},
+	'A': {".##.", "#..#", "#..#", "####", "#..#", "#..#"},
+	'B': {"###.", "#..#", "###.", "#..#", "#..#", "###."},
+	'C': {".###", "#...", "#...", "#...", "#...", ".###"},
+	'D': {"###.", "#..#", "#..#", "#..#", "#..#", "###."},
+	'E': {"####", "#...", "###.", "#...", "#...", "####"},
+	'F': {"####", "#...", "###.", "#...", "#...", "#..."},
+	'G': {".###", "#...", "#...", "#.##", "#..#", ".###"},
+	'H': {"#..#", "#..#", "####", "#..#", "#..#", "#..#"},
+	'I': {"###", ".#.", ".#.", ".#.", ".#.", "###"},
+	'J': {"..##", "...#", "...#", "...#", "#..#", ".##."},
+	'K': {"#..#", "#.#.", "##..", "##..", "#.#.", "#..#"},
+	'L': {"#...", "#...", "#...", "#...", "#...", "####"},
+	'M': {"#...#", "##.##", "#.#.#", "#...#", "#...#", "#...#"},
+	'N': {"#..#", "##.#", "##.#", "#.##", "#.##", "#..#"},
+	'O': {".##.", "#..#", "#..#", "#..#", "#..#", ".##."},
+	'P': {"###.", "#..#", "#..#", "###.", "#...", "#..."},
+	'Q': {".##.", "#..#", "#..#", "#..#", "#.#.", ".#.#"},
+	'R': {"###.", "#..#", "#..#", "###.", "#.#.", "#..#"},
+	'S': {".###", "#...", ".##.", "...#", "...#", "###."},
+	'T': {"#####", "..#..", "..#..", "..#..", "..#..", "..#.."},
+	'U': {"#..#", "#..#", "#..#", "#..#", "#..#", ".##."},
+	'V': {"#...#", "#...#", "#...#", ".#.#.", ".#.#.", "..#.."},
+	'W': {"#...#", "#...#", "#...#", "#.#.#", "##.##", "#...#"},
+	'X': {"#..#", "#..#", ".##.", ".##.", "#..#", "#..#"},
+	'Y': {"#...#", "#...#", ".#.#.", "..#..", "..#..", "..#.."},
+	'Z': {"####", "...#", "..#.", ".#..", "#...", "####"},
+	'0': {".##.", "#..#", "#.##", "##.#", "#..#", ".##."},
+	'1': {".#.", "##.", ".#.", ".#.", ".#.", "###"},
+	'2': {".##.", "#..#", "...#", "..#.", ".#..", "####"},
+	'3': {"###.", "...#", ".##.", "...#", "...#", "###."},
+	'4': {"#..#", "#..#", "#..#", "####", "...#", "...#"},
+	'5': {"####", "#...", "###.", "...#", "...#", "###."},
+	'6': {".##.", "#...", "###.", "#..#", "#..#", ".##."},
+	'7': {"####", "...#", "..#.", "..#.", ".#..", ".#.."},
+	'8': {".##.", "#..#", ".##.", "#..#", "#..#", ".##."},
+	'9': {".##.", "#..#", "#..#", ".###", "...#", ".##."},
+	'-': {"...", "...", "###", "...", "...", "..."},
+	'/': {"...#", "...#", "..#.", ".#..", "#...", "#..."},
+	'.': {".", ".", ".", ".", ".", "#"},
+	'&': {".#..", "#.#.", ".#..", "#.#.", "#..#", ".##."},
 }

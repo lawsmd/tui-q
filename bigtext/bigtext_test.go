@@ -7,39 +7,39 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-func TestEveryFontDrawsAHeading(t *testing.T) {
-	names := Fonts()
-	if len(names) == 0 {
-		t.Fatal("no fonts")
-	}
-	for _, name := range names {
-		if !Has(name) {
-			t.Errorf("Has(%q) is false", name)
-		}
-		for _, text := range []string{"In Progress", "Open", "Waiting 12"} {
-			rows, err := Render(name, text)
-			if err != nil {
-				t.Errorf("%s: %v", name, err)
-				continue
+func TestGlyphsAreSixEvenLines(t *testing.T) {
+	for r, g := range glyphs {
+		for _, l := range g {
+			if len(l) != len(g[0]) || strings.Trim(l, ".#") != "" {
+				t.Errorf("%q has the line %q", r, l)
 			}
-			if len(rows) == 0 || len(rows) > MaxHeight {
-				t.Errorf("%s: %d rows for %q", name, len(rows), text)
-			}
-			for _, row := range rows {
-				if lipgloss.Width(row) != lipgloss.Width(rows[0]) {
-					t.Errorf("%s: rows of %q differ in width:\n%s", name, text, strings.Join(rows, "\n"))
-				}
-			}
-			t.Logf("%s\n%s", name, strings.Join(rows, "\n"))
 		}
 	}
 }
 
-func TestUnknownFont(t *testing.T) {
-	if Has("nonesuch") {
-		t.Error("Has finds a font that is not there")
+func TestRender(t *testing.T) {
+	for _, text := range []string{"In Progress", "Open", "Waiting 12"} {
+		rows, err := Render(Block, text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != Height {
+			t.Errorf("%d rows for %q", len(rows), text)
+		}
+		for _, row := range rows {
+			if lipgloss.Width(row) != lipgloss.Width(rows[0]) {
+				t.Errorf("rows of %q differ in width", text)
+			}
+		}
+		t.Logf("\n%s", strings.Join(rows, "\n"))
 	}
-	if _, err := Render("nonesuch", "Open"); err == nil {
+	if rows, _ := Render(Block, "I"); strings.Join(rows, "|") != "▀█▀| █ |▄█▄" {
+		t.Errorf("I is drawn as %q", rows)
+	}
+	if _, err := Render(Block, "né"); err == nil {
+		t.Error("a character with no shape draws")
+	}
+	if _, err := Render("nonesuch", "Open"); err == nil || Has("nonesuch") {
 		t.Error("an unknown font draws")
 	}
 }

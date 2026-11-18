@@ -80,14 +80,14 @@ func TestBucketsAndTheSingleTabRow(t *testing.T) {
 	}
 	checkFrames(t, m, "buckets")
 
-	// With a heading font the name of a bucket is drawn on two rows, and
-	// the number of its tickets follows on the second.
-	q.cfg.HeadingFont = "twopoint"
+	// With a heading font the name of a bucket is drawn on three rows,
+	// and the number of its tickets follows on the last.
+	q.cfg.HeadingFont = "block"
 	big := q.heading("Open", 3)
-	if len(big) != 2 || !strings.HasSuffix(big[1], "  3") || strings.Contains(big[0], "Open") {
+	if len(big) != 3 || !strings.HasSuffix(big[2], "  3") || strings.Contains(big[0], "Open") {
 		t.Fatalf("heading in a font: %q", big)
 	}
-	if out := screen(m); !strings.Contains(out, big[0]) || !strings.Contains(out, strings.TrimRight(big[1], " 3")) {
+	if out := screen(m); !strings.Contains(out, big[0]) || !strings.Contains(out, big[1]) {
 		t.Fatalf("the table does not show the heading %q:\n%s", big, out)
 	}
 	tickets := 0

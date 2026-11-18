@@ -56,7 +56,7 @@ type Queue struct {
 	// table has no Other section.
 	HideUnmatched bool `toml:"hide_unmatched"`
 	// HeadingFont names a font in package bigtext. The names of the
-	// buckets are drawn in it, a few rows tall.
+	// buckets are drawn in it, three rows tall.
 	HeadingFont string `toml:"heading_font"`
 	// Refresh is how often the queue reloads on its own. Zero means only
 	// on request.
