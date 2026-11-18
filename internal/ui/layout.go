@@ -48,6 +48,9 @@ func (m *Model) compose() *lipgloss.Compositor {
 	if m.menu != nil {
 		root.AddLayers(m.menuLayers()...)
 	}
+	if m.form != nil {
+		root.AddLayers(m.formLayers()...)
+	}
 	if m.drag != nil && m.activeTab < 0 {
 		if l := m.dragLayer(); l != nil {
 			root.AddLayers(l)

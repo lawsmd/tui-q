@@ -182,7 +182,7 @@ func (q *queue) card(m *Model, t ticket.Ticket, border lipgloss.Style) []string 
 			}
 		default:
 			if value == "" {
-				value = "no " + strings.ToLower(m.prof.Label(name))
+				value = "no " + strings.ToLower(m.label(name))
 			}
 			lines = append(lines, s.Faint.Render(fit(value, inner)))
 		}

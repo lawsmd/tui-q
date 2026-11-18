@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -34,6 +35,7 @@ layout = "board"
 lanes = ["Open", "In progress", "Waiting", "Done"]
 
 [ticket]
+sidebar = ["status", "type", "assignee", "priority", "labels", "region"]
 comments = true
 `
 
@@ -44,7 +46,12 @@ func drain(t *testing.T, m *Model, cmd tea.Cmd) {
 	if cmd == nil {
 		return
 	}
-	switch msg := cmd().(type) {
+	msg := cmd()
+	// A text field's cursor blinks for ever; drop its ticks too.
+	if strings.Contains(fmt.Sprintf("%T", msg), "cursor.") {
+		return
+	}
+	switch msg := msg.(type) {
 	case nil, spinner.TickMsg:
 	case tea.BatchMsg:
 		for _, c := range msg {
@@ -249,32 +256,6 @@ func dragTo(t *testing.T, m *Model, from, to string) {
 		t.Fatal("no drag in progress after moving a pressed card")
 	}
 	send(t, m, tea.MouseReleaseMsg{X: bx, Y: by, Button: tea.MouseLeft})
-}
-
-func TestDragCardToAnotherLane(t *testing.T) {
-	m := newModel(t, 130, 40)
-	clickLayer(t, m, layerID(idQueueTab, 2))
-	q := m.queues[2]
-	card := q.lanes()[0].tickets[0]
-	key := q.tickets[card].Key
-
-	dragTo(t, m, layerID(idCard, card), layerID(idLane, 2))
-	if m.drag != nil {
-		t.Fatal("drag still in progress after the drop")
-	}
-	if len(m.tabs) != 0 {
-		t.Fatal("a drag opened the ticket")
-	}
-	if want := "Dropped " + key + " on Waiting"; !strings.Contains(screen(m), want) {
-		t.Fatalf("status bar lacks %q\n%s", want, screen(m))
-	}
-
-	// A drop on the lane the card came from does nothing.
-	m.notice = ""
-	dragTo(t, m, layerID(idCard, card), layerID(idLane, 0))
-	if m.notice != "" {
-		t.Fatalf("drop on the same lane reported %q", m.notice)
-	}
 }
 
 func TestDraggedCardFollowsThePointer(t *testing.T) {

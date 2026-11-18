@@ -39,6 +39,14 @@ type Provider interface {
 	Assign(ctx context.Context, id, userID string) error
 	// UpdateField writes one field.
 	UpdateField(ctx context.Context, id, field string, v ticket.Value) error
+	// Me is the user the credentials belong to.
+	Me(ctx context.Context) (ticket.User, error)
+	// Users lists the people a ticket can be assigned to whose names match
+	// query.
+	Users(ctx context.Context, id, query string) ([]ticket.User, error)
+	// FieldLabels gives the platform's own name for each custom field of
+	// the profile, keyed by the profile's field name.
+	FieldLabels(ctx context.Context) (map[string]string, error)
 }
 
 // Factory builds a Provider from its config.

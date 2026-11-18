@@ -26,10 +26,44 @@ func init() {
 // Statuses are the workflow states of the fixture tickets, in order.
 var Statuses = []string{"Open", "In progress", "Waiting", "Done"}
 
+// Priorities are the values of the priority field.
+var Priorities = []string{"Low", "Medium", "High"}
+
+// People are the users a fixture ticket can be assigned to. The first is
+// the one the fake credentials belong to.
+var People = []string{"sam", "alex", "jo"}
+
+// Resolutions are the values the transition to Done asks for.
+var Resolutions = []string{"Fixed", "Won't fix"}
+
+// FieldResolution is the field the transition to Done requires.
+const FieldResolution = "resolution"
+
+func options(names []string) []ticket.Option {
+	out := make([]ticket.Option, len(names))
+	for i, name := range names {
+		out[i] = ticket.Option{ID: name, Name: name}
+	}
+	return out
+}
+
+// editable is the edit description every fixture ticket carries.
+func editable() []ticket.FieldSpec {
+	return []ticket.FieldSpec{
+		{Name: ticket.FieldAssignee, Label: "Assignee", Kind: ticket.KindUser},
+		{Name: "labels", Label: "Labels", Kind: ticket.KindTags},
+		{Name: ticket.FieldPriority, Label: "Priority", Kind: ticket.KindSelect, Required: true, Options: options(Priorities)},
+		{Name: ticket.FieldTitle, Label: "Title", Kind: ticket.KindText, Required: true},
+	}
+}
+
 // Provider serves the fixture tickets. Delay is added to every call so the
 // status bar and write lock can be seen working.
 type Provider struct {
 	Delay time.Duration
+	// FailWrites, when set, is returned by every call that would change
+	// a ticket.
+	FailWrites error
 
 	mu      sync.Mutex
 	tickets []ticket.Ticket
@@ -127,10 +161,13 @@ func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 	if err != nil {
 		return ticket.Ticket{}, err
 	}
-	return *t, nil
+	out := *t
+	out.Editable = editable()
+	return out, nil
 }
 
-// Transitions offers every status other than the current one.
+// Transitions offers every status other than the current one. The move to
+// Done asks for a resolution.
 func (p *Provider) Transitions(ctx context.Context, id string) ([]ticket.Transition, error) {
 	if err := p.wait(ctx); err != nil {
 		return nil, err
@@ -144,22 +181,42 @@ func (p *Provider) Transitions(ctx context.Context, id string) ([]ticket.Transit
 	var out []ticket.Transition
 	for i, s := range Statuses {
 		if s != t.Status {
-			out = append(out, ticket.Transition{ID: fmt.Sprint(i), Name: "Move to " + s, To: s})
+			tr := ticket.Transition{ID: fmt.Sprint(i), Name: s, To: s}
+			if s == "Done" {
+				tr.Fields = []ticket.FieldSpec{{
+					Name: FieldResolution, Label: "Resolution", Kind: ticket.KindSelect,
+					Required: true, Options: options(Resolutions),
+				}}
+			}
+			out = append(out, tr)
 		}
 	}
 	return out, nil
 }
 
 // Transition sets the status.
-func (p *Provider) Transition(ctx context.Context, id string, tr ticket.Transition, _ map[string]ticket.Value) error {
+func (p *Provider) Transition(ctx context.Context, id string, tr ticket.Transition, fields map[string]ticket.Value) error {
 	if err := p.wait(ctx); err != nil {
 		return err
+	}
+	if p.FailWrites != nil {
+		return p.FailWrites
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	t, err := p.find(id)
 	if err != nil {
 		return err
+	}
+	if tr.To == "Done" {
+		resolution := fields[FieldResolution]
+		if resolution.String() == "" {
+			return fmt.Errorf("a resolution is required to move %s to Done", id)
+		}
+		if t.Fields == nil {
+			t.Fields = map[string]ticket.Value{}
+		}
+		t.Fields[FieldResolution] = resolution
 	}
 	t.Status = tr.To
 	t.Updated = time.Now()
@@ -170,6 +227,9 @@ func (p *Provider) Transition(ctx context.Context, id string, tr ticket.Transiti
 func (p *Provider) Assign(ctx context.Context, id, userID string) error {
 	if err := p.wait(ctx); err != nil {
 		return err
+	}
+	if p.FailWrites != nil {
+		return p.FailWrites
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -187,6 +247,9 @@ func (p *Provider) UpdateField(ctx context.Context, id, field string, v ticket.V
 	if err := p.wait(ctx); err != nil {
 		return err
 	}
+	if p.FailWrites != nil {
+		return p.FailWrites
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	t, err := p.find(id)
@@ -194,13 +257,15 @@ func (p *Provider) UpdateField(ctx context.Context, id, field string, v ticket.V
 		return err
 	}
 	switch field {
+	case ticket.FieldAssignee:
+		t.Assignee = v.ID
 	case ticket.FieldTitle:
 		t.Title = v.String()
 	case ticket.FieldPriority:
 		t.Priority = v.String()
 	case ticket.FieldBody:
 		t.Body = v.String()
-	case ticket.FieldKey, ticket.FieldStatus, ticket.FieldAssignee, ticket.FieldCreated, ticket.FieldUpdated:
+	case ticket.FieldKey, ticket.FieldStatus, ticket.FieldCreated, ticket.FieldUpdated:
 		return fmt.Errorf("field %q cannot be edited directly", field)
 	default:
 		if t.Fields == nil {
@@ -210,4 +275,31 @@ func (p *Provider) UpdateField(ctx context.Context, id, field string, v ticket.V
 	}
 	t.Updated = time.Now()
 	return nil
+}
+
+// Me is the first of People.
+func (p *Provider) Me(ctx context.Context) (ticket.User, error) {
+	if err := p.wait(ctx); err != nil {
+		return ticket.User{}, err
+	}
+	return ticket.User{ID: People[0], Name: People[0]}, nil
+}
+
+// Users lists the People whose names contain query.
+func (p *Provider) Users(ctx context.Context, _, query string) ([]ticket.User, error) {
+	if err := p.wait(ctx); err != nil {
+		return nil, err
+	}
+	var out []ticket.User
+	for _, name := range People {
+		if strings.Contains(name, strings.ToLower(strings.TrimSpace(query))) {
+			out = append(out, ticket.User{ID: name, Name: name})
+		}
+	}
+	return out, nil
+}
+
+// FieldLabels has nothing to add: the fixtures have no platform names.
+func (p *Provider) FieldLabels(context.Context) (map[string]string, error) {
+	return nil, nil
 }

@@ -44,7 +44,8 @@ Provider packages export their HTTP client so an instance action can call any en
   columns or card fields, refresh interval. A board names the field its lanes group by.
   Dropping a card on a status lane runs a transition; on any other lane, a field edit.
 - `[ticket]`: main fields and sidebar fields in order; whether comments are shown.
-- `[fields.<name>]`: platform field ID, type, label.
+- `[fields.<name>]`: platform field ID, type, label. A field with no label is shown
+  under the name the platform gives it.
 
 ## Interface
 
@@ -60,6 +61,19 @@ Provider packages export their HTTP client so an instance action can call any en
   column when narrow.
 - Reads show in the status bar and leave input free. Writes lock input until they end.
   Failures stay in the status bar until dismissed.
+- A custom field with no value is left out of a ticket whose edit screen does not have
+  it. One profile can then list the fields of several ticket types.
+- A field the platform lets the user change has a mark after its label, and a click on
+  the label edits it. Status, assignee and fields with a fixed set of values open a menu.
+  Text, numbers and lists open a form, which takes the keyboard until it is saved or
+  cancelled. Rich text is not edited from the ticket view, since writing it back as
+  plain text would drop its formatting.
+- The ticket view has `move` and `assign` buttons. The context menu of a row or card has
+  the same actions.
+- A card dropped on another lane moves there at once and the change is written. When
+  the write fails, or the platform asks for values first, the card goes back. A move
+  that requires fields opens a form for them.
+- After every write the ticket is read back and every queue reloads.
 
 ## Phases
 
@@ -69,7 +83,7 @@ Provider packages export their HTTP client so an instance action can call any en
 | 1 | Core skeleton: model, provider interface, fake provider, profile loader, shell, table, ticket view, operation runner, naming guard | done |
 | 2 | Jira provider (read): search, ticket load, field mapping, rich text to Markdown; first instance module | done; `tq check` reads every queue of a profile once without the interface |
 | 3 | Board layout, drag between lanes, context menu, sideways scrolling | done; a drop reports the move and changes nothing until phase 4 |
-| 4 | Writes: transitions with required-field forms, assignment, field edits | |
+| 4 | Writes: transitions with required-field forms, assignment, field edits | done against the fake provider and against recorded requests; not yet run against a live site |
 | 5 | `ext.Action` and the first instance-only action | |
 | 6 | Azure DevOps provider and a second instance; macOS and Linux run | |
 | 7 | Disk snapshots, timed refresh, themes, remaining extension points, docs | |

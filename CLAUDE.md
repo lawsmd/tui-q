@@ -34,8 +34,8 @@ Ask which of these a request is when it is not stated.
 
 ## Instance modules
 
-Each job has a local Go module beside this one, `~/tq-<codename>`, with local git and no
-remote. It imports this module through a `replace` directive, embeds its own
+Each job has a local Go module named `tq-<codename>`, kept wherever that job's files
+live on the machine, with local git and no remote. It imports this module through a `replace` directive, embeds its own
 `profile.toml`, and calls `tuiq.Run` with its options. Its `CLAUDE.md` is the only place
 that organisation's specifics are written down. Never copy text from an instance module
 into this repository.

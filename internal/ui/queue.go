@@ -86,7 +86,7 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 
 	header := make([]string, len(cols))
 	for i, c := range cols {
-		header[i] = fit(m.prof.Label(c.name), c.width)
+		header[i] = fit(m.label(c.name), c.width)
 	}
 	gap := strings.Repeat(" ", columnGap)
 	layers := []*lipgloss.Layer{

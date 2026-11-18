@@ -71,8 +71,9 @@ func (r *Runner) Start(label string, write bool, fn Func) tea.Cmd {
 	}
 }
 
-// Finish records the end of an operation.
-func (r *Runner) Finish(d DoneMsg) {
+// Finish records the end of an operation and returns its entry. The entry
+// is empty when the operation is not known.
+func (r *Runner) Finish(d DoneMsg) Entry {
 	for i, e := range r.active {
 		if e.ID != d.ID {
 			continue
@@ -88,8 +89,9 @@ func (r *Runner) Finish(d DoneMsg) {
 			failed := e
 			r.err = &failed
 		}
-		return
+		return e
 	}
+	return Entry{}
 }
 
 // Busy reports whether any operation is running.

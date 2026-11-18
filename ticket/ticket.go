@@ -20,11 +20,24 @@ const (
 	FieldBody     = "body"
 )
 
+// BuiltIn reports whether name is one of the built-in field names.
+func BuiltIn(name string) bool {
+	switch name {
+	case FieldKey, FieldTitle, FieldStatus, FieldType, FieldAssignee,
+		FieldPriority, FieldCreated, FieldUpdated, FieldBody:
+		return true
+	}
+	return false
+}
+
 // Value is the content of one field. Single-valued fields use Text;
 // multi-valued fields (labels, tags) use Items.
 type Value struct {
 	Text  string
 	Items []string
+	// ID is the platform's identifier for the value when the text alone
+	// does not pin it down, as with a user.
+	ID string
 }
 
 // String returns the value as one line of text.
@@ -64,6 +77,55 @@ type Ticket struct {
 	Fields map[string]Value
 
 	Comments []Comment
+
+	// Editable describes the fields the platform lets the user change on
+	// this ticket. Only a ticket loaded in full has it.
+	Editable []FieldSpec
+}
+
+// Spec returns the edit description of a field of this ticket.
+func (t Ticket) Spec(name string) (FieldSpec, bool) {
+	for _, spec := range t.Editable {
+		if spec.Name == name {
+			return spec, true
+		}
+	}
+	return FieldSpec{}, false
+}
+
+// Kinds of field, which decide how a value is entered.
+const (
+	// KindNone is a field tui-q cannot edit.
+	KindNone = ""
+	KindText = "text"
+	// KindRichText is formatted text. It can be written from plain
+	// paragraphs, which drops any formatting the old value had.
+	KindRichText = "richtext"
+	KindNumber   = "number"
+	// KindSelect takes one of Options and KindMulti any number of them.
+	KindSelect = "select"
+	KindMulti  = "multi"
+	// KindTags is a list of free words.
+	KindTags = "tags"
+	KindUser = "user"
+)
+
+// FieldSpec describes one field a ticket or a transition accepts.
+type FieldSpec struct {
+	// Name is the profile's name for the field, a built-in name, or the
+	// platform's own identifier when the profile does not name the field.
+	Name string
+	// Label is the platform's name for the field.
+	Label    string
+	Kind     string
+	Required bool
+	Options  []Option
+}
+
+// Option is one allowed value of a select field.
+type Option struct {
+	ID   string
+	Name string
 }
 
 // Comment is one existing comment, shown read-only.
@@ -112,6 +174,8 @@ type Transition struct {
 	Name string
 	// To is the name of the status the ticket ends in.
 	To string
+	// Fields are the values the platform asks for with the transition.
+	Fields []FieldSpec
 }
 
 // User is a person a ticket can be assigned to.

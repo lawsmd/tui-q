@@ -13,9 +13,23 @@ import (
 	"github.com/lawsmd/tui-q/ticket"
 )
 
+const editMetaJSON = `{"fields": {
+  "summary": {"required": true, "name": "Summary", "schema": {"type": "string", "system": "summary"}},
+  "assignee": {"required": false, "name": "Assignee", "schema": {"type": "user", "system": "assignee"}},
+  "priority": {"required": false, "name": "Priority", "schema": {"type": "priority", "system": "priority"},
+    "allowedValues": [{"id": "1", "name": "High"}, {"id": "3", "name": "Low"}]},
+  "labels": {"required": false, "name": "Labels", "schema": {"type": "array", "items": "string", "system": "labels"}},
+  "field_43": {"required": false, "name": "Sales regions", "schema": {"type": "array", "items": "option", "custom": "x:multiselect"},
+    "allowedValues": [{"id": "201", "value": "North"}, {"id": "202", "value": "South"}]},
+  "field_44": {"required": false, "name": "Seat count", "schema": {"type": "number", "custom": "x:float"}},
+  "field_45": {"required": false, "name": "Notes for the next shift", "schema": {"type": "string", "custom": "x:textarea"}},
+  "issuetype": {"required": true, "name": "Issue Type", "schema": {"type": "issuetype", "system": "issuetype"}}
+}}`
+
 const issueJSON = `{
   "id": "10001",
   "key": "DEMO-7",
+  "editmeta": ` + editMetaJSON + `,
   "fields": {
     "summary": "Export drops rows",
     "status": {"name": "Open"},
@@ -45,6 +59,7 @@ var testFields = map[string]string{
 	"category": "field_42",
 	"regions":  "field_43",
 	"count":    "field_44",
+	"notes":    "field_45",
 }
 
 // server answers the endpoints the provider uses and records what it was
@@ -79,7 +94,20 @@ func newServer(t *testing.T) *server {
 		case r.URL.Path == "/rest/api/3/issue/DEMO-7" && r.Method == http.MethodGet:
 			io.WriteString(w, issueJSON)
 		case r.URL.Path == "/rest/api/3/issue/DEMO-7/transitions" && r.Method == http.MethodGet:
-			io.WriteString(w, `{"transitions": [{"id": "11", "name": "Start work", "to": {"name": "In progress"}}]}`)
+			io.WriteString(w, `{"transitions": [
+				{"id": "11", "name": "Start work", "to": {"name": "In progress"}},
+				{"id": "21", "name": "Close", "to": {"name": "Done"}, "fields": {
+					"resolution": {"required": true, "name": "Resolution", "schema": {"type": "resolution", "system": "resolution"},
+						"allowedValues": [{"id": "5", "name": "Fixed"}, {"id": "6", "name": "Duplicate"}]}}}
+			]}`)
+		case r.URL.Path == "/rest/api/3/issue/DEMO-7/editmeta":
+			io.WriteString(w, editMetaJSON)
+		case r.URL.Path == "/rest/api/3/myself":
+			io.WriteString(w, `{"accountId": "me-1", "displayName": "Sam Example"}`)
+		case r.URL.Path == "/rest/api/3/user/assignable/search":
+			io.WriteString(w, `[{"accountId": "u-2", "displayName": "Alex Example"}]`)
+		case r.URL.Path == "/rest/api/3/field":
+			io.WriteString(w, `[{"id": "field_43", "name": "Sales regions"}, {"id": "field_99", "name": "Unused"}, {"id": "labels", "name": "Labels"}]`)
 		case r.URL.Path == "/rest/api/3/issue/MISSING-1":
 			w.WriteHeader(http.StatusNotFound)
 			io.WriteString(w, `{"errorMessages": ["Issue does not exist"], "errors": {}}`)
@@ -180,32 +208,59 @@ func TestWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(trs) != 1 || trs[0].To != "In progress" {
+	if len(trs) != 2 || trs[0].To != "In progress" || len(trs[0].Fields) != 0 {
 		t.Fatalf("transitions = %+v", trs)
 	}
-	if err := p.Transition(ctx, "DEMO-7", trs[0], nil); err != nil {
-		t.Fatal(err)
+	if f := trs[1].Fields; len(f) != 1 || f[0].Name != "resolution" || !f[0].Required || f[0].Kind != ticket.KindSelect || len(f[0].Options) != 2 {
+		t.Fatalf("fields of the second transition = %+v", f)
 	}
-	if err := p.Assign(ctx, "DEMO-7", "abc"); err != nil {
-		t.Fatal(err)
+	steps := []func() error{
+		func() error { return p.Transition(ctx, "DEMO-7", trs[0], nil) },
+		func() error {
+			return p.Transition(ctx, "DEMO-7", trs[1], map[string]ticket.Value{"resolution": ticket.Text("duplicate")})
+		},
+		func() error { return p.Assign(ctx, "DEMO-7", "abc") },
+		func() error { return p.Assign(ctx, "DEMO-7", "") },
+		// The first field edit loads the edit screen; the rest reuse it.
+		func() error { return p.UpdateField(ctx, "DEMO-7", "labels", ticket.List("a", "b")) },
+		func() error { return p.UpdateField(ctx, "DEMO-7", ticket.FieldTitle, ticket.Text("New title")) },
+		func() error { return p.UpdateField(ctx, "DEMO-7", ticket.FieldPriority, ticket.Text("low")) },
+		func() error { return p.UpdateField(ctx, "DEMO-7", "regions", ticket.List("South", "North")) },
+		func() error { return p.UpdateField(ctx, "DEMO-7", "regions", ticket.Text("North")) },
+		func() error { return p.UpdateField(ctx, "DEMO-7", "count", ticket.Text("12.5")) },
+		func() error { return p.UpdateField(ctx, "DEMO-7", "count", ticket.Text("")) },
+		func() error { return p.UpdateField(ctx, "DEMO-7", "notes", ticket.Text("One\ntwo\n\nThree")) },
+		func() error {
+			return p.UpdateField(ctx, "DEMO-7", ticket.FieldAssignee, ticket.Value{Text: "Alex", ID: "u-2"})
+		},
+		// A field the edit screen does not describe is sent as it is.
+		func() error { return p.UpdateField(ctx, "DEMO-7", "category", ticket.Text("Plain")) },
 	}
-	if err := p.Assign(ctx, "DEMO-7", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := p.UpdateField(ctx, "DEMO-7", "labels", ticket.List("a", "b")); err != nil {
-		t.Fatal(err)
-	}
-	if err := p.UpdateField(ctx, "DEMO-7", ticket.FieldTitle, ticket.Text("New title")); err != nil {
-		t.Fatal(err)
+	for i, step := range steps {
+		if err := step(); err != nil {
+			t.Fatalf("step %d: %v", i, err)
+		}
 	}
 
 	want := []struct{ request, body string }{
 		{"GET /rest/api/3/issue/DEMO-7/transitions", ""},
 		{"POST /rest/api/3/issue/DEMO-7/transitions", `{"transition":{"id":"11"}}`},
+		{"POST /rest/api/3/issue/DEMO-7/transitions", `{"fields":{"resolution":{"id":"6"}},"transition":{"id":"21"}}`},
 		{"PUT /rest/api/3/issue/DEMO-7/assignee", `{"accountId":"abc"}`},
 		{"PUT /rest/api/3/issue/DEMO-7/assignee", `{"accountId":null}`},
+		{"GET /rest/api/3/issue/DEMO-7/editmeta", ""},
 		{"PUT /rest/api/3/issue/DEMO-7", `{"fields":{"labels":["a","b"]}}`},
 		{"PUT /rest/api/3/issue/DEMO-7", `{"fields":{"summary":"New title"}}`},
+		{"PUT /rest/api/3/issue/DEMO-7", `{"fields":{"priority":{"id":"3"}}}`},
+		{"PUT /rest/api/3/issue/DEMO-7", `{"fields":{"field_43":[{"id":"202"},{"id":"201"}]}}`},
+		{"PUT /rest/api/3/issue/DEMO-7", `{"fields":{"field_43":[{"id":"201"}]}}`},
+		{"PUT /rest/api/3/issue/DEMO-7", `{"fields":{"field_44":12.5}}`},
+		{"PUT /rest/api/3/issue/DEMO-7", `{"fields":{"field_44":null}}`},
+		{"PUT /rest/api/3/issue/DEMO-7", `{"fields":{"field_45":{"content":[` +
+			`{"content":[{"text":"One","type":"text"},{"type":"hardBreak"},{"text":"two","type":"text"}],"type":"paragraph"},` +
+			`{"content":[{"text":"Three","type":"text"}],"type":"paragraph"}],"type":"doc","version":1}}}`},
+		{"PUT /rest/api/3/issue/DEMO-7/assignee", `{"accountId":"u-2"}`},
+		{"PUT /rest/api/3/issue/DEMO-7", `{"fields":{"field_42":"Plain"}}`},
 	}
 	if len(s.requests) != len(want) {
 		t.Fatalf("requests = %v", s.requests)
@@ -214,6 +269,67 @@ func TestWrites(t *testing.T) {
 		if s.requests[i] != w.request || s.bodies[i] != w.body {
 			t.Errorf("request %d = %s %s, want %s %s", i, s.requests[i], s.bodies[i], w.request, w.body)
 		}
+	}
+
+	// A value that is not one of the options is refused before any request.
+	sent := len(s.requests)
+	err = p.UpdateField(ctx, "DEMO-7", ticket.FieldPriority, ticket.Text("Urgent"))
+	if err == nil || !strings.Contains(err.Error(), "Priority") || len(s.requests) != sent {
+		t.Fatalf("bad option: err=%v, requests made=%d", err, len(s.requests)-sent)
+	}
+	if err := p.UpdateField(ctx, "DEMO-7", "labels", ticket.List("two words")); err == nil {
+		t.Fatal("a tag with a space in it was accepted")
+	}
+}
+
+func TestGetDescribesEditableFields(t *testing.T) {
+	s := newServer(t)
+	got, err := newProvider(s).Get(context.Background(), "DEMO-7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]string{
+		ticket.FieldTitle:    ticket.KindText,
+		ticket.FieldAssignee: ticket.KindUser,
+		ticket.FieldPriority: ticket.KindSelect,
+		ticket.FieldType:     ticket.KindNone,
+		"labels":             ticket.KindTags,
+		"regions":            ticket.KindMulti,
+		"count":              ticket.KindNumber,
+		"notes":              ticket.KindRichText,
+	}
+	if len(got.Editable) != len(kinds) {
+		t.Fatalf("%d editable fields, want %d: %+v", len(got.Editable), len(kinds), got.Editable)
+	}
+	for name, kind := range kinds {
+		spec, ok := got.Spec(name)
+		if !ok || spec.Kind != kind {
+			t.Errorf("%s: kind %q (found %v), want %q", name, spec.Kind, ok, kind)
+		}
+	}
+	if spec, _ := got.Spec("regions"); spec.Label != "Sales regions" || len(spec.Options) != 2 || spec.Options[1] != (ticket.Option{ID: "202", Name: "South"}) {
+		t.Errorf("regions spec = %+v", spec)
+	}
+	if _, ok := got.Spec("category"); ok {
+		t.Error("a field the edit screen lacks has a spec")
+	}
+}
+
+func TestAccountUsersAndFieldLabels(t *testing.T) {
+	s := newServer(t)
+	p := newProvider(s)
+	ctx := context.Background()
+	me, err := p.Me(ctx)
+	if err != nil || me != (ticket.User{ID: "me-1", Name: "Sam Example"}) {
+		t.Fatalf("Me = %+v, %v", me, err)
+	}
+	users, err := p.Users(ctx, "DEMO-7", "al ex")
+	if err != nil || len(users) != 1 || users[0].ID != "u-2" {
+		t.Fatalf("Users = %+v, %v", users, err)
+	}
+	labels, err := p.FieldLabels(ctx)
+	if err != nil || len(labels) != 2 || labels["regions"] != "Sales regions" || labels["labels"] != "Labels" {
+		t.Fatalf("FieldLabels = %v, %v", labels, err)
 	}
 }
 

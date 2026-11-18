@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lawsmd/tui-q/provider"
@@ -40,6 +41,13 @@ type Provider struct {
 	client *Client
 	// fields maps a profile field name to a Jira field ID.
 	fields map[string]string
+
+	// meta remembers, per issue and Jira field ID, what the edit and
+	// transition screens said about each field.
+	// edit marks the issues whose edit screen has been read.
+	mu   sync.Mutex
+	meta map[string]map[string]ticket.FieldSpec
+	edit map[string]bool
 }
 
 // New builds a Provider from a profile's [provider] section. The
@@ -63,7 +71,7 @@ func New(cfg provider.Config) (*Provider, error) {
 
 // NewProvider builds a Provider around an existing Client.
 func NewProvider(client *Client, fields map[string]string) *Provider {
-	return &Provider{client: client, fields: fields}
+	return &Provider{client: client, fields: fields, meta: map[string]map[string]ticket.FieldSpec{}, edit: map[string]bool{}}
 }
 
 // Client returns the HTTP client, for instance code that needs endpoints
@@ -86,6 +94,10 @@ type issue struct {
 	ID     string                     `json:"id"`
 	Key    string                     `json:"key"`
 	Fields map[string]json.RawMessage `json:"fields"`
+	// EditMeta is present when the request asks for it.
+	EditMeta struct {
+		Fields map[string]rawMeta `json:"fields"`
+	} `json:"editmeta"`
 }
 
 // Search runs a JQL query and follows the page tokens.
@@ -118,18 +130,22 @@ func (p *Provider) Search(ctx context.Context, query string) ([]ticket.Ticket, e
 	}
 }
 
-// Get loads one issue with its description and comments.
+// Get loads one issue with its description, its comments, and the fields
+// of its edit screen.
 func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 	path := "/rest/api/3/issue/" + url.PathEscape(id) +
-		"?fields=" + url.QueryEscape(strings.Join(p.fieldIDs("description", "comment"), ","))
+		"?expand=editmeta&fields=" + url.QueryEscape(strings.Join(p.fieldIDs("description", "comment"), ","))
 	var is issue
 	if err := p.client.Do(ctx, http.MethodGet, path, nil, &is); err != nil {
 		return ticket.Ticket{}, err
 	}
-	return p.toTicket(is), nil
+	t := p.toTicket(is)
+	t.Editable = p.specs(t.ID, is.EditMeta.Fields, true)
+	return t, nil
 }
 
-// Transitions lists the workflow transitions open to an issue.
+// Transitions lists the workflow transitions open to an issue, each with
+// the fields of its screen.
 func (p *Provider) Transitions(ctx context.Context, id string) ([]ticket.Transition, error) {
 	var resp struct {
 		Transitions []struct {
@@ -138,15 +154,19 @@ func (p *Provider) Transitions(ctx context.Context, id string) ([]ticket.Transit
 			To   struct {
 				Name string `json:"name"`
 			} `json:"to"`
+			Fields map[string]rawMeta `json:"fields"`
 		} `json:"transitions"`
 	}
-	path := "/rest/api/3/issue/" + url.PathEscape(id) + "/transitions"
+	path := "/rest/api/3/issue/" + url.PathEscape(id) + "/transitions?expand=transitions.fields"
 	if err := p.client.Do(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	out := make([]ticket.Transition, len(resp.Transitions))
 	for i, tr := range resp.Transitions {
 		out[i] = ticket.Transition{ID: tr.ID, Name: tr.Name, To: tr.To.Name}
+		if len(tr.Fields) > 0 {
+			out[i].Fields = p.specs(id, tr.Fields, false)
+		}
 	}
 	return out, nil
 }
@@ -157,7 +177,11 @@ func (p *Provider) Transition(ctx context.Context, id string, tr ticket.Transiti
 	if len(fields) > 0 {
 		encoded := map[string]any{}
 		for name, v := range fields {
-			encoded[p.fieldID(name)] = encode(v)
+			fid, value, err := p.encodeField(ctx, id, name, v)
+			if err != nil {
+				return err
+			}
+			encoded[fid] = value
 		}
 		body["fields"] = encoded
 	}
@@ -175,11 +199,17 @@ func (p *Provider) Assign(ctx context.Context, id, userID string) error {
 	return p.client.Do(ctx, http.MethodPut, path, map[string]any{"accountId": account}, nil)
 }
 
-// UpdateField writes one field. Text and list values are sent as they are;
-// fields that need a richer shape (options, users) are handled when the
-// edit forms are built.
+// UpdateField writes one field, shaped the way the issue's edit screen
+// describes it.
 func (p *Provider) UpdateField(ctx context.Context, id, field string, v ticket.Value) error {
-	body := map[string]any{"fields": map[string]any{p.fieldID(field): encode(v)}}
+	if field == ticket.FieldAssignee {
+		return p.Assign(ctx, id, v.ID)
+	}
+	fid, value, err := p.encodeField(ctx, id, field, v)
+	if err != nil {
+		return err
+	}
+	body := map[string]any{"fields": map[string]any{fid: value}}
 	return p.client.Do(ctx, http.MethodPut, "/rest/api/3/issue/"+url.PathEscape(id), body, nil)
 }
 

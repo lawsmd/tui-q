@@ -32,21 +32,29 @@ const wheelStep = 3
 
 // Layer IDs. An ID with a colon carries an index after it.
 const (
-	idQueueTab  = "queue"
-	idTicketTab = "tab"
-	idTabClose  = "tabx"
-	idRow       = "row"
-	idRefresh   = "refresh"
-	idStatus    = "status"
-	idOpen      = "open"
-	idMore      = "more"
-	idLeft      = "left"
-	idRight     = "right"
-	idLane      = "lane"
-	idCard      = "card"
-	idMenu      = "menu"
-	idMenuItem  = "menuitem"
+	idQueueTab   = "queue"
+	idTicketTab  = "tab"
+	idTabClose   = "tabx"
+	idRow        = "row"
+	idRefresh    = "refresh"
+	idStatus     = "status"
+	idOpen       = "open"
+	idMore       = "more"
+	idLeft       = "left"
+	idRight      = "right"
+	idLane       = "lane"
+	idCard       = "card"
+	idMenu       = "menu"
+	idMenuItem   = "menuitem"
+	idMove       = "move"
+	idAssign     = "assign"
+	idField      = "field"
+	idForm       = "form"
+	idFormCancel = "formcancel"
 )
+
+// hitEvent is one mouse gesture.
+type hitEvent = hit.Event
 
 func layerID(kind string, n int) string { return kind + ":" + strconv.Itoa(n) }
 
@@ -68,8 +76,19 @@ type queueLoadedMsg struct {
 	tickets []ticket.Ticket
 }
 
-// ticketLoadedMsg carries one ticket loaded in full.
-type ticketLoadedMsg struct{ t ticket.Ticket }
+// ticketLoadedMsg carries one ticket loaded in full and the moves open to
+// it.
+type ticketLoadedMsg struct {
+	t   ticket.Ticket
+	trs []ticket.Transition
+}
+
+// meMsg carries the user the credentials belong to, and labelsMsg the
+// platform's names for the profile's fields.
+type (
+	meMsg     struct{ me ticket.User }
+	labelsMsg struct{ labels map[string]string }
+)
 
 // browserOpenedMsg reports that the browser was started.
 type browserOpenedMsg struct{}
@@ -93,10 +112,18 @@ type Model struct {
 	spin     spinner.Model
 	spinning bool
 
-	// menu is the open context menu, and drag the card being carried.
-	// Both are nil most of the time.
+	// me is the user the credentials belong to, once it is known.
+	me ticket.User
+	// labels are the platform's names for the profile's fields.
+	labels map[string]string
+
+	// menu is the open menu, form the open form, and drag the card being
+	// carried. All are nil most of the time.
 	menu *menu
+	form *form
 	drag *drag
+	// undo puts the screen back when the running write fails.
+	undo func()
 	// notice is a one-line message for the status bar. The next click
 	// clears it.
 	notice string
@@ -122,13 +149,47 @@ func New(prof *profile.Profile, prov provider.Provider) *Model {
 	return m
 }
 
-// Init loads every queue.
+// Init loads every queue, the user's own account, and the platform's
+// names for the profile's fields.
 func (m *Model) Init() tea.Cmd {
+	cmds := []tea.Cmd{
+		m.start("Loading the account", false, func(ctx context.Context) (tea.Msg, error) {
+			me, err := m.prov.Me(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("account: %w", err)
+			}
+			return meMsg{me: me}, nil
+		}),
+		m.start("Loading field names", false, func(ctx context.Context) (tea.Msg, error) {
+			labels, err := m.prov.FieldLabels(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("field names: %w", err)
+			}
+			return labelsMsg{labels: labels}, nil
+		}),
+	}
+	return tea.Batch(append(cmds, m.reloadQueues())...)
+}
+
+// reloadQueues loads every queue again.
+func (m *Model) reloadQueues() tea.Cmd {
 	cmds := make([]tea.Cmd, 0, len(m.queues))
 	for i := range m.queues {
 		cmds = append(cmds, m.loadQueue(i))
 	}
 	return tea.Batch(cmds...)
+}
+
+// label is the heading for a field: the profile's label when it gives
+// one, then the platform's name for the field, then the field name.
+func (m *Model) label(name string) string {
+	if f, ok := m.prof.Fields[name]; ok && f.Label != "" {
+		return f.Label
+	}
+	if l := m.labels[name]; l != "" {
+		return l
+	}
+	return m.prof.Label(name)
 }
 
 // start runs a provider call through the operation runner and keeps the
@@ -175,7 +236,9 @@ func (m *Model) loadTicket(id, key string) tea.Cmd {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", key, err)
 		}
-		return ticketLoadedMsg{t: t}, nil
+		// A ticket with no moves open is still worth showing.
+		trs, _ := m.prov.Transitions(ctx, id)
+		return ticketLoadedMsg{t: t, trs: trs}, nil
 	})
 }
 
@@ -221,6 +284,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
+		m.sizeForm()
 
 	case spinner.TickMsg:
 		if !m.ops.Busy() {
@@ -232,7 +296,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case ops.DoneMsg:
-		m.ops.Finish(msg)
+		if entry := m.ops.Finish(msg); entry.Write {
+			// A write that failed, or that stopped to ask for values,
+			// changed nothing: put back what was shown ahead of it.
+			_, asked := msg.Msg.(needFieldsMsg)
+			if m.undo != nil && (msg.Err != nil || asked) {
+				m.undo()
+			}
+			m.undo = nil
+		}
 		if msg.Err != nil {
 			m.clearLoading()
 			return m, nil
@@ -251,11 +323,53 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, tab := range m.tabs {
 			if tab.t.ID == msg.t.ID {
 				tab.set(msg.t)
+				tab.transitions = msg.trs
 				tab.loading = false
 			}
 		}
 
+	case meMsg:
+		m.me = msg.me
+
+	case labelsMsg:
+		m.labels = msg.labels
+		for _, tab := range m.tabs {
+			tab.main = nil
+		}
+
+	case transitionsMsg:
+		m.moveMenu(msg.t, msg.trs, msg.x, msg.y)
+
+	case usersMsg:
+		m.userMenu(msg)
+
+	case needFieldsMsg:
+		return m, m.askFields(msg.t, msg.tr)
+
+	case changedMsg:
+		if msg.t.ID != "" {
+			m.replaceTicket(msg.t)
+			for _, tab := range m.tabs {
+				if tab.t.ID == msg.t.ID {
+					tab.transitions = msg.trs
+				}
+			}
+		}
+		m.notice = msg.note
+		// The change may have moved the ticket into or out of any queue.
+		return m, m.reloadQueues()
+
 	case tea.KeyPressMsg:
+		if m.form != nil {
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc":
+				m.form = nil
+				return m, nil
+			}
+			return m.formUpdate(msg)
+		}
 		return m, m.key(msg)
 
 	case tea.MouseMsg:
@@ -266,9 +380,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmds []tea.Cmd
 		for _, ev := range m.mouse.Handle(msg, m.at) {
+			if m.form != nil {
+				// The form takes the keyboard; the mouse can only cancel it.
+				if ev.Kind == hit.Click && ev.ID == idFormCancel {
+					m.form = nil
+				}
+				continue
+			}
 			cmds = append(cmds, m.gesture(ev))
 		}
 		return m, tea.Batch(cmds...)
+
+	default:
+		// Anything else is a message one of the form's fields sent itself.
+		if m.form != nil {
+			return m.formUpdate(msg)
+		}
 	}
 	return m, nil
 }
@@ -371,7 +498,7 @@ func (m *Model) gesture(ev hit.Event) tea.Cmd {
 			m.drag.over = m.queues[m.activeQueue].laneName(ev.Over)
 		}
 	case hit.Drop:
-		m.drop(ev)
+		return m.drop(ev)
 	}
 	return nil
 }
@@ -395,7 +522,7 @@ func (m *Model) menuGesture(ev hit.Event) tea.Cmd {
 		m.menu = nil
 		m.menuFor(ev)
 	case hit.Wheel:
-		m.menu = nil
+		m.menu.offset += ev.DY
 	}
 	return nil
 }
@@ -447,6 +574,19 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		m.ops.Dismiss()
 	case idOpen:
 		return m.openInBrowser()
+	case idMove, idAssign, idField:
+		if m.activeTab < 0 {
+			return nil
+		}
+		tab := m.tabs[m.activeTab]
+		switch {
+		case kind == idMove:
+			m.moveMenu(tab.t, tab.transitions, ev.X, ev.Y)
+		case kind == idAssign:
+			m.assignMenu(tab.t, ev.X, ev.Y)
+		case n >= 0 && n < len(tab.fields):
+			return m.editField(tab, tab.fields[n], ev.X, ev.Y)
+		}
 	}
 	return nil
 }
@@ -484,23 +624,6 @@ func (m *Model) startDrag(ev hit.Event) {
 	}
 	m.notice = ""
 	m.drag = &drag{index: n, x: ev.X, y: ev.Y, dx: ev.X - layer.GetX(), dy: ev.Y - layer.GetY()}
-}
-
-// drop ends a drag. Moving a ticket to another lane is a write, and writes
-// are not built yet, so for now the drop is only reported.
-func (m *Model) drop(ev hit.Event) {
-	d := m.drag
-	m.drag = nil
-	q := m.queues[m.activeQueue]
-	if d == nil || d.index >= len(q.tickets) {
-		return
-	}
-	t := q.tickets[d.index]
-	target := q.laneName(ev.Over)
-	if target == "" || strings.EqualFold(target, q.laneOf(t)) {
-		return
-	}
-	m.notice = fmt.Sprintf("Dropped %s on %s. Moving a ticket is not built yet.", t.Key, target)
 }
 
 // View draws the frame and keeps it for hit testing.
