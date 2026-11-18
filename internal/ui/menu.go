@@ -23,6 +23,8 @@ type menu struct {
 	offset int
 }
 
+// menuItem is one line of a menu. A line with no run is a heading: it is
+// drawn faint and a click on it does nothing.
 type menuItem struct {
 	label string
 	run   func() tea.Cmd
@@ -98,7 +100,11 @@ func (m *Model) menuLayers() []*lipgloss.Layer {
 	layers := []*lipgloss.Layer{lipgloss.NewLayer(strings.Join(rows, "\n")).ID(idMenu).X(x).Y(y).Z(zMenu)}
 	for i := 0; i < visible; i++ {
 		n := mn.offset + i
-		item := s.MenuItem.Render(fit(" "+mn.items[n].label, w-2))
+		style := s.MenuItem
+		if mn.items[n].run == nil {
+			style = s.MenuTitle
+		}
+		item := style.Render(fit(" "+mn.items[n].label, w-2))
 		layers = append(layers, lipgloss.NewLayer(item).ID(layerID(idMenuItem, n)).X(x+1).Y(y+2+i).Z(zMenuItem))
 	}
 	return layers

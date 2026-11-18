@@ -17,11 +17,20 @@ type Column struct {
 	FirstName bool `json:"first_name,omitempty"`
 }
 
+// View is the settings of one queue.
+type View struct {
+	// Show lists the fields the queue's table shows. Empty means the
+	// columns the profile gives the queue.
+	Show []string `json:"show,omitempty"`
+}
+
 // Store is the settings of one site. A Store with no path keeps them in
 // memory only.
 type Store struct {
 	path    string
 	Columns map[string]Column `json:"columns"`
+	// Views holds the settings of each queue, by the queue's name.
+	Views map[string]View `json:"views,omitempty"`
 }
 
 // Path is the settings file for a site, named by a hash of key so that
@@ -47,6 +56,9 @@ func Open(path string) *Store {
 	if s.Columns == nil {
 		s.Columns = map[string]Column{}
 	}
+	if s.Views == nil {
+		s.Views = map[string]View{}
+	}
 	return s
 }
 
@@ -59,6 +71,19 @@ func (s *Store) SetColumn(field string, c Column) error {
 		delete(s.Columns, field)
 	} else {
 		s.Columns[field] = c
+	}
+	return s.save()
+}
+
+// View returns the settings of a queue.
+func (s *Store) View(queue string) View { return s.Views[queue] }
+
+// SetView changes the settings of a queue and saves the file.
+func (s *Store) SetView(queue string, v View) error {
+	if len(v.Show) == 0 {
+		delete(s.Views, queue)
+	} else {
+		s.Views[queue] = v
 	}
 	return s.save()
 }

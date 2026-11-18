@@ -17,6 +17,12 @@ func TestSettingsAreSavedAndReadBack(t *testing.T) {
 	if !Open(path).Column("assignee").FirstName {
 		t.Fatal("the setting was not read back")
 	}
+	if err := s.SetView("Open", View{Show: []string{"key", "title"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := Open(path).View("Open").Show; len(got) != 2 || got[1] != "title" {
+		t.Fatalf("view read back = %v", got)
+	}
 	if err := s.SetColumn("assignee", Column{}); err != nil {
 		t.Fatal(err)
 	}

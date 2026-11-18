@@ -84,29 +84,14 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 	}
 	cols, hidden := q.columns(m, avail, q.colOffset)
 
-	// A column with settings has a gear after its label, drawn as a layer
-	// of its own so it can be clicked.
 	header := make([]string, len(cols))
-	var gears []*lipgloss.Layer
-	x := a.x + 1
 	for i, c := range cols {
-		label := m.label(c.name)
-		header[i] = fit(label, c.width)
-		if c.gear && c.width > gearWidth {
-			room := c.width - gearWidth
-			header[i] = fit(label, room) + blank(gearWidth, 1)
-			at := x + min(lipgloss.Width(label), room)
-			if at+gearWidth <= a.x+a.w-moreWidth {
-				gears = append(gears, lipgloss.NewLayer(s.Arrow.Render(" "+gearGlyph)).ID(layerID(idGear, c.index)).X(at).Y(a.y).Z(zButton))
-			}
-		}
-		x += c.width + columnGap
+		header[i] = fit(m.label(c.name), c.width)
 	}
 	gap := strings.Repeat(" ", columnGap)
 	layers := []*lipgloss.Layer{
 		lipgloss.NewLayer(s.Header.Render(fit(" "+strings.Join(header, gap), a.w))).X(a.x).Y(a.y).Z(zScenery),
 	}
-	layers = append(layers, gears...)
 	layers = append(layers, arrows(s, a.x+a.w-moreWidth, a.y, q.colOffset > 0, hidden > 0)...)
 
 	visible := a.h - 1
@@ -150,10 +135,6 @@ func arrows(s Styles, x, y int, left, right bool) []*lipgloss.Layer {
 type column struct {
 	name  string
 	width int
-	// index is the column's place in the profile's list.
-	index int
-	// gear says the column has settings.
-	gear bool
 }
 
 // columns picks the columns that fit in width cells and sizes them, and
@@ -166,12 +147,12 @@ type column struct {
 // columns from the left, which is how the table scrolls sideways.
 func (q *queue) columns(m *Model, width, offset int) (cols []column, hidden int) {
 	var picked []column
-	for i, name := range q.cfg.Columns {
+	for i, name := range m.shown(q) {
 		if i > 0 && name != ticket.FieldTitle && offset > 0 {
 			offset--
 			continue
 		}
-		picked = append(picked, column{name: name, index: i, gear: m.hasSettings(name)})
+		picked = append(picked, column{name: name})
 	}
 	for {
 		cols = append([]column(nil), picked...)
@@ -183,9 +164,6 @@ func (q *queue) columns(m *Model, width, offset int) (cols []column, hidden int)
 				continue
 			}
 			w := lipgloss.Width(c.name)
-			if c.gear {
-				w += gearWidth
-			}
 			for _, t := range q.tickets {
 				w = max(w, lipgloss.Width(m.cell(t, c.name)))
 			}

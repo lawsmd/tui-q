@@ -541,6 +541,10 @@ func (m *Model) menuGesture(ev hit.Event) tea.Cmd {
 			return nil
 		}
 		items := m.menu.items
+		if kind == idMenuItem && n >= 0 && n < len(items) && items[n].run == nil {
+			// A heading inside the menu does nothing.
+			return nil
+		}
 		m.menu = nil
 		if kind == idMenuItem && n >= 0 && n < len(items) {
 			return items[n].run()
@@ -592,10 +596,7 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 	case idMore:
 		m.menuFor(ev)
 	case idGear:
-		q := m.queues[m.activeQueue]
-		if n >= 0 && n < len(q.cfg.Columns) {
-			m.columnMenu(q.cfg.Columns[n], ev.X, ev.Y)
-		}
+		m.viewMenu(ev.X, ev.Y)
 	case idLeft:
 		m.queues[m.activeQueue].scrollSideways(-1)
 	case idRight:

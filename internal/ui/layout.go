@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/lawsmd/tui-q/profile"
 )
 
 // Z-order of the frame. Lip Gloss gives no order to layers that share a z,
@@ -67,6 +69,13 @@ func (m *Model) queueTabRow(w int) []*lipgloss.Layer {
 	button := s.Button.Render("refresh")
 	buttonX := w - lipgloss.Width(button)
 	layers = append(layers, lipgloss.NewLayer(button).ID(idRefresh).X(buttonX).Z(zItem))
+	// A table has a gear beside the refresh button for the settings of the
+	// view: which columns it shows and how.
+	if m.activeTab < 0 && m.queues[m.activeQueue].cfg.Layout == profile.LayoutTable {
+		gear := s.Button.Render(gearGlyph)
+		buttonX -= lipgloss.Width(gear) + 1
+		layers = append(layers, lipgloss.NewLayer(gear).ID(idGear).X(buttonX).Z(zItem))
+	}
 
 	x := 0
 	for i, q := range m.queues {

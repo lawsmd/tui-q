@@ -60,9 +60,11 @@ The Jira client has `Do` for JSON and `Raw` for files.
   lane. Sideways scrolling is on the arrow buttons, the arrow keys, a sideways wheel and
   shift with the wheel. The ticket sidebar moves under the main
   column when narrow.
-- A table column with settings has a gear after its label, and a click on the gear
-  opens them. A column of people can show first names only. These settings are saved
-  per site in the user's configuration directory, outside the profile.
+- A table has a gear button beside `refresh` that opens the settings of the view: a
+  checkbox for each column it can show, then options such as showing a person's first
+  name only. The columns on offer are the profile's for that queue, then every other
+  field. These settings are saved per site in the user's configuration directory,
+  outside the profile.
 - Reads show in the status bar and leave input free. Writes lock input until they end.
   Failures stay in the status bar until dismissed.
 - A custom field with no value is left out of a ticket whose edit screen does not have
