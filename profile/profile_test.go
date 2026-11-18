@@ -50,6 +50,30 @@ label = "Tags"
 	}
 }
 
+func TestFieldIcons(t *testing.T) {
+	p, err := Parse("[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\n[fields.type.icons]\nBug = \"bug\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := p.Fields["type"]
+	if g, ok := f.Icon("bug"); !ok || g != "¤" {
+		t.Errorf("a mapped value gives %q, %v", g, ok)
+	}
+	if g, ok := f.Icon("Task"); !ok || g != "·" {
+		t.Errorf("an unmapped value gives %q, %v", g, ok)
+	}
+	if _, ok := f.Icon(""); ok {
+		t.Error("an empty value has an icon")
+	}
+	f.Icons[AnyValue] = "question"
+	if g, _ := f.Icon("Task"); g != "?" {
+		t.Errorf("with a default, an unmapped value gives %q", g)
+	}
+	if _, ok := p.Fields["status"].Icon("Open"); ok {
+		t.Error("a field with no icons has one")
+	}
+}
+
 func TestParseRejectsMistakes(t *testing.T) {
 	cases := map[string]string{
 		"unknown key":  "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\ncolour = \"red\"\n",
@@ -57,6 +81,7 @@ func TestParseRejectsMistakes(t *testing.T) {
 		"no queue":     "[provider]\nkind = \"fake\"\n",
 		"bad layout":   "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\nlayout = \"grid\"\n",
 		"unnamed":      "[provider]\nkind = \"fake\"\n[[queue]]\nquery = \"x\"\n",
+		"bad icon":     "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\n[fields.type.icons]\nBug = \"nonesuch\"\n",
 		"bad duration": "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\nrefresh = \"soon\"\n",
 	}
 	for name, text := range cases {

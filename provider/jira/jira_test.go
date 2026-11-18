@@ -43,6 +43,7 @@ const issueJSON = `{
     "field_42": {"value": "Reports", "child": {"value": "Monthly"}},
     "field_43": [{"value": "North"}, {"value": "South"}],
     "field_44": 3,
+    "field_46": {"requestType": {"id": "9", "name": "Report a fault"}, "currentStatus": {"status": "Open"}},
     "description": {"type": "doc", "version": 1, "content": [
       {"type": "paragraph", "content": [{"type": "text", "text": "Rows vanish."}]}
     ]},
@@ -61,6 +62,7 @@ var testFields = map[string]string{
 	"regions":  "field_43",
 	"count":    "field_44",
 	"notes":    "field_45",
+	"request":  "field_46",
 }
 
 // server answers the endpoints the provider uses and records what it was
@@ -175,6 +177,7 @@ func TestGetMapsFields(t *testing.T) {
 		"category":           "Reports / Monthly",
 		"regions":            "North, South",
 		"count":              "3",
+		"request":            "Report a fault",
 	}
 	for name, want := range checks {
 		if got := got.Field(name).String(); got != want {

@@ -184,7 +184,7 @@ func (q *queue) card(m *Model, t ticket.Ticket, border lipgloss.Style) []string 
 			if value == "" {
 				value = "no " + strings.ToLower(m.label(name))
 			}
-			lines = append(lines, s.Faint.Render(fit(value, inner)))
+			lines = append(lines, s.Faint.Render(fit(m.withIcon(name, value), inner)))
 		}
 	}
 	return box(lines, q.cardW, border)

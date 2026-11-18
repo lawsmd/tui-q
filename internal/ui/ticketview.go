@@ -238,7 +238,7 @@ func (tab *ticketTab) sidebarLines(m *Model, w int) ([]string, []labelLine) {
 		if !tab.shows(name) {
 			continue
 		}
-		value := tab.t.Field(name).String()
+		value := m.withIcon(name, tab.t.Field(name).String())
 		if value == "" {
 			value = s.Faint.Render("none")
 		}

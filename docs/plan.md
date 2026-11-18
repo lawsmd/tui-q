@@ -50,6 +50,11 @@ The Jira client has `Do` for JSON and `Raw` for files.
 - `[ticket]`: main fields and sidebar fields in order; whether comments are shown.
 - `[fields.<name>]`: platform field ID, type, label. A field with no label is shown
   under the name the platform gives it.
+- `[fields.<name>.icons]`: a map from a value of the field to the name of an icon in
+  `docs/icons.md`. The key `"*"` names the icon for every other value; without it such
+  a value shows `·`. A table shows the icon in place of the value, in a column one cell
+  wide with no heading. A card and the ticket sidebar show the icon before the value.
+  A built-in field takes icons too, in a `[fields.<name>]` table with no `id`.
 
 ## Interface
 
@@ -60,7 +65,7 @@ The Jira client has `Do` for JSON and `Raw` for files.
 - A dragged card is drawn as a top layer with no ID, so the hit test reports the lane
   under it.
 - Tables drop low-priority columns when narrow, then scroll sideways with the first
-  column and the title pinned. Boards scroll sideways by lane and vertically inside a
+  column, the title and the icon columns pinned. Boards scroll sideways by lane and vertically inside a
   lane. Sideways scrolling is on the arrow buttons, the arrow keys, a sideways wheel and
   shift with the wheel. The ticket sidebar moves under the main
   column when narrow.

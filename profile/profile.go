@@ -10,6 +10,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/lawsmd/tui-q/icon"
 	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
 )
@@ -79,6 +80,38 @@ type Field struct {
 	// Type is "text", "select", "list" or "user".
 	Type  string `toml:"type"`
 	Label string `toml:"label"`
+	// Icons maps a value of the field to the name of an icon in package
+	// icon. The key "*" names the icon for every other value. A table
+	// shows the icon in place of the value.
+	Icons map[string]string `toml:"icons"`
+}
+
+// AnyValue is the key in Icons for the values that have no entry.
+const AnyValue = "*"
+
+// Icon returns the glyph for a value of the field. It reports false when
+// the field has no icons or the value is empty.
+func (f Field) Icon(value string) (string, bool) {
+	if len(f.Icons) == 0 || value == "" {
+		return "", false
+	}
+	name, ok := f.Icons[value]
+	if !ok {
+		for v, n := range f.Icons {
+			if strings.EqualFold(v, value) {
+				name, ok = n, true
+				break
+			}
+		}
+	}
+	if !ok {
+		name, ok = f.Icons[AnyValue]
+	}
+	if !ok {
+		return icon.Other, true
+	}
+	g, _ := icon.Glyph(name)
+	return g, true
 }
 
 // Duration lets TOML hold values like "90s".
@@ -134,6 +167,11 @@ func (p *Profile) finish() error {
 	for name, f := range p.Fields {
 		if f.ID != "" {
 			p.Provider.Fields[name] = f.ID
+		}
+		for value, n := range f.Icons {
+			if _, ok := icon.Glyph(n); !ok {
+				return fmt.Errorf("profile: field %q: no icon named %q for %q", name, n, value)
+			}
 		}
 	}
 	for i := range p.Queues {

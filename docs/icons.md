@@ -1,0 +1,82 @@
+# Icons
+
+A profile maps the values of a field to these names under `[fields.<name>.icons]`. Each
+glyph is one cell wide and is drawn by the terminal's own monospace font. The set is in
+`icon/icon.go`.
+
+| Name | Glyph |
+|---|---|
+| `bug` | `¤` |
+| `gear` | `☼` |
+| `data` | `≡` |
+| `swap` | `↔` |
+| `home` | `⌂` |
+| `mail` | `@` |
+| `question` | `?` |
+| `alert` | `‼` |
+| `warn` | `!` |
+| `plug` | `╪` |
+| `plug2` | `╫` |
+| `link` | `∞` |
+| `note` | `♪` |
+| `section` | `§` |
+| `para` | `¶` |
+| `money` | `$` |
+| `tag` | `#` |
+| `percent` | `%` |
+| `and` | `&` |
+| `plus` | `+` |
+| `minus` | `−` |
+| `times` | `×` |
+| `check` | `√` |
+| `sum` | `∑` |
+| `about` | `≈` |
+| `differ` | `≠` |
+| `change` | `±` |
+| `wave` | `~` |
+| `asterisk` | `*` |
+| `flag` | `▌` |
+| `play` | `►` |
+| `back` | `◄` |
+| `user` | `☺` |
+| `user2` | `☻` |
+| `heart` | `♥` |
+| `spade` | `♠` |
+| `club` | `♣` |
+| `up` | `↑` |
+| `down` | `↓` |
+| `left` | `←` |
+| `right` | `→` |
+| `updown` | `↕` |
+| `tri-up` | `▲` |
+| `tri-down` | `▼` |
+| `tri-up-o` | `△` |
+| `tri-down-o` | `▽` |
+| `tri-right` | `▶` |
+| `tri-right-o` | `▷` |
+| `square` | `■` |
+| `square-o` | `□` |
+| `dot-square` | `▪` |
+| `circle` | `●` |
+| `circle-o` | `○` |
+| `half` | `◐` |
+| `half2` | `◑` |
+| `diamond` | `◆` |
+| `diamond-o` | `◇` |
+| `lozenge` | `◊` |
+| `star` | `★` |
+| `star-o` | `☆` |
+| `cross` | `╬` |
+| `grid` | `┼` |
+| `light` | `░` |
+| `medium` | `▒` |
+| `dark` | `▓` |
+| `block` | `█` |
+| `bar` | `▬` |
+| `delta` | `∆` |
+| `omega` | `Ω` |
+| `pi` | `π` |
+| `mu` | `µ` |
+| `lambda` | `λ` |
+| `sigma` | `σ` |
+| `phi` | `φ` |

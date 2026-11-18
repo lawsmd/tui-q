@@ -137,6 +137,11 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 
 	header := make([]string, len(cols))
 	for i, c := range cols {
+		// An icon column is one cell wide and has no heading.
+		if m.icons(c.name) {
+			header[i] = fit("", c.width)
+			continue
+		}
 		header[i] = fit(m.label(c.name), c.width)
 	}
 	gap := strings.Repeat(" ", columnGap)
@@ -204,12 +209,18 @@ type column struct {
 // Every column is as wide as its longest value, up to a cap; the title
 // column takes what is left. When the title would get too little room,
 // columns are dropped from the end of the list until it fits. The first
-// column and the title are pinned. Offset skips that many of the other
-// columns from the left, which is how the table scrolls sideways.
+// column, the title and the icon columns are pinned. Offset skips that
+// many of the other columns from the left, which is how the table scrolls
+// sideways.
 func (q *queue) columns(m *Model, width, offset int) (cols []column, hidden int) {
 	var picked []column
-	for i, name := range m.shown(q) {
-		if i > 0 && name != ticket.FieldTitle && offset > 0 {
+	first := true
+	for _, name := range m.shown(q) {
+		pinned := name == ticket.FieldTitle || m.icons(name)
+		if !pinned && first {
+			pinned, first = true, false
+		}
+		if !pinned && offset > 0 {
 			offset--
 			continue
 		}
@@ -225,6 +236,9 @@ func (q *queue) columns(m *Model, width, offset int) (cols []column, hidden int)
 				continue
 			}
 			w := lipgloss.Width(c.name)
+			if m.icons(c.name) {
+				w = 1
+			}
 			for _, t := range q.tickets {
 				w = max(w, lipgloss.Width(m.cell(t, c.name)))
 			}

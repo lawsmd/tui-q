@@ -12,7 +12,21 @@ import (
 )
 
 // gearGlyph is drawn on the button that opens the settings of a view.
-const gearGlyph = "⚙"
+const gearGlyph = "☼"
+
+// icons reports whether the profile maps the values of a field to icons.
+func (m *Model) icons(name string) bool {
+	return len(m.prof.Fields[name].Icons) > 0
+}
+
+// withIcon puts the icon of a value before it, for the places that have
+// room for both.
+func (m *Model) withIcon(name, value string) string {
+	if g, ok := m.prof.Fields[name].Icon(value); ok {
+		return g + " " + value
+	}
+	return value
+}
 
 // person reports whether a field holds people.
 func (m *Model) person(name string) bool {
@@ -23,6 +37,10 @@ func (m *Model) person(name string) bool {
 // follows the settings of the field.
 func (m *Model) cell(t ticket.Ticket, name string) string {
 	value := t.Field(name).String()
+	if m.icons(name) {
+		g, _ := m.prof.Fields[name].Icon(value)
+		return g
+	}
 	if m.person(name) && m.prefs.Column(name).FirstName {
 		return firstNames(value)
 	}

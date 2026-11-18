@@ -333,6 +333,10 @@ func scalar(v any) string {
 				return s
 			}
 		}
+		// A service desk request names its type one level down.
+		if rt, ok := v["requestType"].(map[string]any); ok {
+			return scalar(rt)
+		}
 	}
 	return ""
 }
