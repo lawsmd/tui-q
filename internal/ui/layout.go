@@ -36,10 +36,20 @@ func (m *Model) compose() *lipgloss.Compositor {
 		return lipgloss.NewCompositor(root)
 	}
 
-	root.AddLayers(m.queueTabRow(w)...)
-	root.AddLayers(m.ticketTabRow(w)...)
+	// A profile with one queue has one tab row: the queue, then the open
+	// tickets. With more queues the tickets have a row of their own.
+	queueTabs, end, limit := m.queueTabRow(w)
+	root.AddLayers(queueTabs...)
+	top := 1
+	if len(m.queues) == 1 {
+		root.AddLayers(m.ticketTabs(end, 0, limit)...)
+	} else {
+		top = 2
+		root.AddLayers(lipgloss.NewLayer(m.styles.SubTabRow.Render(blank(w, 1))).Y(1).Z(zScenery))
+		root.AddLayers(m.ticketTabs(0, 1, w)...)
+	}
 
-	content := area{x: 0, y: 2, w: w, h: h - 3}
+	content := area{x: 0, y: top, w: w, h: h - top - 1}
 	if m.activeTab >= 0 {
 		root.AddLayers(m.tabs[m.activeTab].layers(m, content)...)
 	} else {
@@ -61,8 +71,9 @@ func (m *Model) compose() *lipgloss.Compositor {
 	return lipgloss.NewCompositor(root)
 }
 
-// queueTabRow is the top row: one tab per queue and a refresh button.
-func (m *Model) queueTabRow(w int) []*lipgloss.Layer {
+// queueTabRow is the top row: one tab per queue and a refresh button. It
+// also returns where the tabs end and where the room for more tabs ends.
+func (m *Model) queueTabRow(w int) (row []*lipgloss.Layer, end, limit int) {
 	s := m.styles
 	layers := []*lipgloss.Layer{lipgloss.NewLayer(s.TabRow.Render(blank(w, 1))).Z(zScenery)}
 
@@ -95,21 +106,22 @@ func (m *Model) queueTabRow(w int) []*lipgloss.Layer {
 		layers = append(layers, lipgloss.NewLayer(tab).ID(layerID(idQueueTab, i)).X(x).Z(zItem))
 		x += tw
 	}
-	return layers
+	return layers, x, buttonX - 1
 }
 
-// ticketTabRow is the second row: one closable tab per open ticket.
-func (m *Model) ticketTabRow(w int) []*lipgloss.Layer {
+// ticketTabs is one closable tab per open ticket, drawn on row y from x
+// up to limit.
+func (m *Model) ticketTabs(x, y, limit int) []*lipgloss.Layer {
 	s := m.styles
-	layers := []*lipgloss.Layer{lipgloss.NewLayer(s.SubTabRow.Render(blank(w, 1))).Y(1).Z(zScenery)}
+	var layers []*lipgloss.Layer
 	if len(m.tabs) == 0 {
 		hint := s.SubTab.Render("click a ticket to open it here")
-		if lipgloss.Width(hint) <= w {
-			layers = append(layers, lipgloss.NewLayer(hint).Y(1).Z(zItem))
+		if x+lipgloss.Width(hint) <= limit {
+			layers = append(layers, lipgloss.NewLayer(hint).X(x).Y(y).Z(zItem))
 		}
 		return layers
 	}
-	x := 0
+	w := limit
 	for i, tab := range m.tabs {
 		style := s.SubTab
 		if i == m.activeTab {
@@ -122,8 +134,8 @@ func (m *Model) ticketTabRow(w int) []*lipgloss.Layer {
 			break
 		}
 		layers = append(layers,
-			lipgloss.NewLayer(label).ID(layerID(idTicketTab, i)).X(x).Y(1).Z(zItem),
-			lipgloss.NewLayer(closer).ID(layerID(idTabClose, i)).X(x+lw).Y(1).Z(zItem),
+			lipgloss.NewLayer(label).ID(layerID(idTicketTab, i)).X(x).Y(y).Z(zItem),
+			lipgloss.NewLayer(closer).ID(layerID(idTabClose, i)).X(x+lw).Y(y).Z(zItem),
 		)
 		x += lw + cw
 	}

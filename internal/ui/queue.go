@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -40,6 +42,54 @@ type queue struct {
 
 	// Set by the last draw, for the handlers that run before the next one.
 	cardW, cardH int
+}
+
+// line is one line of a table: a ticket, or the heading of a bucket.
+type line struct {
+	// ticket is the index of the ticket, or -1 on a heading.
+	ticket  int
+	heading string
+	// odd says the ticket is on an odd place in its section.
+	odd bool
+}
+
+// lines lists the lines of a table from top to bottom. A table with
+// buckets has a heading over each one, and a last section named Other for
+// the tickets that match no bucket.
+func (q *queue) lines() []line {
+	if len(q.cfg.Buckets) == 0 {
+		out := make([]line, len(q.tickets))
+		for i := range q.tickets {
+			out[i] = line{ticket: i, odd: i%2 == 1}
+		}
+		return out
+	}
+	sections := make([][]int, len(q.cfg.Buckets)+1)
+	for i, t := range q.tickets {
+		at := len(q.cfg.Buckets)
+		for j, b := range q.cfg.Buckets {
+			value := t.Field(b.Field).String()
+			if slices.ContainsFunc(b.Values, func(v string) bool { return strings.EqualFold(v, value) }) {
+				at = j
+				break
+			}
+		}
+		sections[at] = append(sections[at], i)
+	}
+	var out []line
+	for j, members := range sections {
+		name := "Other"
+		if j < len(q.cfg.Buckets) {
+			name = q.cfg.Buckets[j].Name
+		} else if len(members) == 0 {
+			break
+		}
+		out = append(out, line{ticket: -1, heading: fmt.Sprintf("%s  %d", name, len(members))})
+		for n, i := range members {
+			out = append(out, line{ticket: i, odd: n%2 == 1})
+		}
+	}
+	return out
 }
 
 // layers draws the queue in the layout its profile asks for.
@@ -94,17 +144,24 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 	}
 	layers = append(layers, arrows(s, a.x+a.w-moreWidth, a.y, q.colOffset > 0, hidden > 0)...)
 
+	lines := q.lines()
 	visible := a.h - 1
-	q.offset = clamp(q.offset, 0, len(q.tickets)-visible)
-	for row := 0; row < visible && q.offset+row < len(q.tickets); row++ {
-		index := q.offset + row
+	q.offset = clamp(q.offset, 0, len(lines)-visible)
+	for row := 0; row < visible && q.offset+row < len(lines); row++ {
+		ln := lines[q.offset+row]
+		if ln.ticket < 0 {
+			heading := s.Bucket.Render(fit(" "+ln.heading, a.w))
+			layers = append(layers, lipgloss.NewLayer(heading).X(a.x).Y(a.y+1+row).Z(zScenery))
+			continue
+		}
+		index := ln.ticket
 		t := q.tickets[index]
 		cells := make([]string, len(cols))
 		for i, c := range cols {
 			cells[i] = fit(m.cell(t, c.name), c.width)
 		}
 		style := s.Row
-		if index%2 == 1 {
+		if ln.odd {
 			style = s.RowAlt
 		}
 		y := a.y + 1 + row

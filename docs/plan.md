@@ -44,13 +44,17 @@ The Jira client has `Do` for JSON and `Raw` for files.
 - `[[queue]]`: name, query in the platform's own language, `layout` (`table` or `board`),
   columns or card fields, refresh interval. A board names the field its lanes group by.
   Dropping a card on a status lane runs a transition; on any other lane, a field edit.
+- `[[queue.bucket]]`: a titled section of a table, with a name, a field (the status by
+  default) and the values that put a ticket in it. Buckets are drawn from top to bottom
+  and scroll as one list. A ticket that matches none is listed under `Other`.
 - `[ticket]`: main fields and sidebar fields in order; whether comments are shown.
 - `[fields.<name>]`: platform field ID, type, label. A field with no label is shown
   under the name the platform gives it.
 
 ## Interface
 
-- Top row: queue tabs. Second row: open tickets. Last row: status bar.
+- Top row: queue tabs. Second row: open tickets. Last row: status bar. A profile with
+  one queue has one tab row, with the open tickets after the queue.
 - Every frame is a Lip Gloss compositor tree. `internal/hit` reports click, right-click,
   drag, drop and wheel against layer IDs.
 - A dragged card is drawn as a top layer with no ID, so the hit test reports the lane

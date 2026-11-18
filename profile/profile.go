@@ -46,9 +46,22 @@ type Queue struct {
 	GroupBy string   `toml:"group_by"`
 	Lanes   []string `toml:"lanes"`
 	Card    []string `toml:"card"`
+	// Buckets split a table into titled sections, drawn from top to
+	// bottom. A ticket goes in the first bucket it matches, and a ticket
+	// that matches none goes in a last section named Other.
+	Buckets []Bucket `toml:"bucket"`
 	// Refresh is how often the queue reloads on its own. Zero means only
 	// on request.
 	Refresh Duration `toml:"refresh"`
+}
+
+// Bucket is one section of a table: the tickets whose field holds one of
+// the values.
+type Bucket struct {
+	Name string `toml:"name"`
+	// Field defaults to the status.
+	Field  string   `toml:"field"`
+	Values []string `toml:"values"`
 }
 
 // TicketView lists the fields of the ticket view, in display order.
@@ -137,6 +150,18 @@ func (p *Profile) finish() error {
 		}
 		if len(q.Columns) == 0 {
 			q.Columns = []string{ticket.FieldKey, ticket.FieldTitle, ticket.FieldStatus, ticket.FieldAssignee}
+		}
+		if len(q.Buckets) > 0 && q.Layout != LayoutTable {
+			return fmt.Errorf("profile: queue %q: only a table has buckets", q.Name)
+		}
+		for j := range q.Buckets {
+			b := &q.Buckets[j]
+			if b.Name == "" || len(b.Values) == 0 {
+				return fmt.Errorf("profile: queue %q: bucket %d needs a name and values", q.Name, j+1)
+			}
+			if b.Field == "" {
+				b.Field = ticket.FieldStatus
+			}
 		}
 		if q.Layout == LayoutBoard {
 			if q.GroupBy == "" {
