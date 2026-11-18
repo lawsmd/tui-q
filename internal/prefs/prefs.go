@@ -34,6 +34,14 @@ type Store struct {
 	Columns map[string]Column `json:"columns"`
 	// Views holds the settings of each queue, by the queue's name.
 	Views map[string]View `json:"views,omitempty"`
+	// DateOnly shows a date and time in a table as the date alone.
+	DateOnly bool `json:"date_only,omitempty"`
+}
+
+// SetDateOnly changes the DateOnly setting and saves the file.
+func (s *Store) SetDateOnly(on bool) error {
+	s.DateOnly = on
+	return s.save()
 }
 
 // Path is the settings file for a site, named by a hash of key so that

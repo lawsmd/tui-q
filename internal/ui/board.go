@@ -165,6 +165,9 @@ func (q *queue) card(m *Model, t ticket.Ticket, border lipgloss.Style) []string 
 	var lines []string
 	for _, name := range q.cfg.Card {
 		value := t.Field(name).String()
+		if m.prefs.DateOnly {
+			value = dateOnly(value)
+		}
 		switch name {
 		case ticket.FieldKey:
 			lines = append(lines, s.CardKey.Render(fit(value, inner)))

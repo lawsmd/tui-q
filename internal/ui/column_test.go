@@ -12,6 +12,30 @@ func headerLine(m *Model) string {
 	return strings.Split(screen(m), "\n")[3]
 }
 
+func TestDateOnlyOption(t *testing.T) {
+	m := newModel(t, 110, 30)
+	stamp := m.queues[0].tickets[0].Field("created").String()
+	if len(stamp) != 16 || !strings.Contains(screen(m), stamp) {
+		t.Fatalf("the table does not show the full time %q", stamp)
+	}
+	clickLayer(t, m, idGear)
+	clickItem(t, m, "[ ] Show dates without the time")
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if out := screen(m); strings.Contains(out, stamp) || !strings.Contains(out, stamp[:10]) {
+		t.Fatalf("with dates only:\n%s", out)
+	}
+	for in, want := range map[string]string{
+		"2026-03-04T10:20:30.000+0000": "2026-03-04",
+		"2026-03-04":                   "2026-03-04",
+		"2026-03-04 is the day":        "2026-03-04 is the day",
+		"Open":                         "Open",
+	} {
+		if got := dateOnly(in); got != want {
+			t.Errorf("dateOnly(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestViewGearPicksColumnsAndOptions(t *testing.T) {
 	m := newModel(t, 110, 30)
 	clickLayer(t, m, layerID(idQueueTab, 1))

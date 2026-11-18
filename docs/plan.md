@@ -69,7 +69,8 @@ The Jira client has `Do` for JSON and `Raw` for files.
   column, the title and the icon columns pinned. The line between two column headings
   is a handle: a drag on it sizes the column next to it, and the title takes the rest.
   The widths are saved per queue with the other view settings, and the view menu resets
-  them. Boards scroll sideways by lane and vertically inside a
+  them. An option in the same menu shows every date and time in a table or on a card
+  as the date alone. Boards scroll sideways by lane and vertically inside a
   lane. Sideways scrolling is on the arrow buttons, the arrow keys, a sideways wheel and
   shift with the wheel. The ticket sidebar moves under the main
   column when narrow.

@@ -4,6 +4,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -42,6 +43,23 @@ func (m *Model) cell(t ticket.Ticket, name string) string {
 	}
 	if m.person(name) && m.prefs.Column(name).FirstName {
 		return firstNames(value)
+	}
+	if m.prefs.DateOnly {
+		return dateOnly(value)
+	}
+	return value
+}
+
+// dateOnly cuts a date and time down to the date. It takes the form the
+// built-in fields are shown in and the form a platform sends, and leaves
+// any other value alone.
+func dateOnly(value string) string {
+	for _, layout := range []string{"2006-01-02 15:04", "2006-01-02T15:04"} {
+		if len(value) >= len(layout) {
+			if _, err := time.Parse(layout, value[:len(layout)]); err == nil {
+				return value[:len("2006-01-02")]
+			}
+		}
 	}
 	return value
 }
@@ -167,6 +185,9 @@ func (m *Model) viewMenu(x, y int) {
 			return again(m.prefs.SetColumn(name, c))
 		}})
 	}
+	options = append(options, menuItem{check(m.prefs.DateOnly) + "Show dates without the time", func() tea.Cmd {
+		return again(m.prefs.SetDateOnly(!m.prefs.DateOnly))
+	}})
 	if v := m.prefs.View(q.cfg.Name); len(v.Widths) > 0 {
 		options = append(options, menuItem{"Reset column widths", func() tea.Cmd {
 			v.Widths = nil
