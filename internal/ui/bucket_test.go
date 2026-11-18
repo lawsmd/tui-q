@@ -80,28 +80,6 @@ func TestBucketsAndTheSingleTabRow(t *testing.T) {
 	}
 	checkFrames(t, m, "buckets")
 
-	// With a heading font the name of a bucket is drawn on three rows,
-	// and the number of its tickets follows on the last.
-	q.cfg.HeadingFont = "block"
-	big := q.heading("Open", 3)
-	if len(big) != 3 || !strings.HasSuffix(big[2], "  3") || strings.Contains(big[0], "Open") {
-		t.Fatalf("heading in a font: %q", big)
-	}
-	if out := screen(m); !strings.Contains(out, big[0]) || !strings.Contains(out, big[1]) {
-		t.Fatalf("the table does not show the heading %q:\n%s", big, out)
-	}
-	tickets := 0
-	for _, ln := range q.lines() {
-		if ln.ticket >= 0 {
-			tickets++
-		}
-	}
-	if tickets != len(q.tickets) {
-		t.Fatalf("%d of %d tickets listed under the large headings", tickets, len(q.tickets))
-	}
-	checkFrames(t, m, "large headings")
-	q.cfg.HeadingFont = ""
-
 	// With hide_unmatched the Other section and its tickets are left out
 	// of the table and of the count on the tab.
 	all := q.count()

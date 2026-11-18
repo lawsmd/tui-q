@@ -10,7 +10,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/lawsmd/tui-q/bigtext"
 	"github.com/lawsmd/tui-q/icon"
 	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
@@ -55,9 +54,6 @@ type Queue struct {
 	// HideUnmatched leaves out the tickets that match no bucket, so the
 	// table has no Other section.
 	HideUnmatched bool `toml:"hide_unmatched"`
-	// HeadingFont names a font in package bigtext. The names of the
-	// buckets are drawn in it, three rows tall.
-	HeadingFont string `toml:"heading_font"`
 	// Refresh is how often the queue reloads on its own. Zero means only
 	// on request.
 	Refresh Duration `toml:"refresh"`
@@ -198,12 +194,6 @@ func (p *Profile) finish() error {
 		}
 		if q.HideUnmatched && len(q.Buckets) == 0 {
 			return fmt.Errorf("profile: queue %q: hide_unmatched needs buckets", q.Name)
-		}
-		if q.HeadingFont != "" && len(q.Buckets) == 0 {
-			return fmt.Errorf("profile: queue %q: heading_font needs buckets", q.Name)
-		}
-		if q.HeadingFont != "" && !bigtext.Has(q.HeadingFont) {
-			return fmt.Errorf("profile: queue %q: no font named %q", q.Name, q.HeadingFont)
 		}
 		if len(q.Buckets) > 0 && q.Layout != LayoutTable {
 			return fmt.Errorf("profile: queue %q: only a table has buckets", q.Name)

@@ -48,8 +48,6 @@ The Jira client has `Do` for JSON and `Raw` for files.
   default) and the values that put a ticket in it. Buckets are drawn from top to bottom
   with a blank line above each, and scroll as one list. A ticket that matches none is listed under `Other`, or left out
   of the table and the count when the queue sets `hide_unmatched = true`.
-  `heading_font = "block"` draws the names of the buckets in solid capitals three rows
-  tall (see `docs/fonts.md`), with the count after the last row.
 - `[ticket]`: main fields and sidebar fields in order; whether comments are shown.
 - `[fields.<name>]`: platform field ID, type, label. A field with no label is shown
   under the name the platform gives it.
