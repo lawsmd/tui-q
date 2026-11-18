@@ -59,6 +59,9 @@ Provider packages export their HTTP client so an instance action can call any en
   lane. Sideways scrolling is on the arrow buttons, the arrow keys, a sideways wheel and
   shift with the wheel. The ticket sidebar moves under the main
   column when narrow.
+- A table column with settings has a gear after its label, and a click on the gear
+  opens them. A column of people can show first names only. These settings are saved
+  per site in the user's configuration directory, outside the profile.
 - Reads show in the status bar and leave input free. Writes lock input until they end.
   Failures stay in the status bar until dismissed.
 - A custom field with no value is left out of a ticket whose edit screen does not have

@@ -77,21 +77,36 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 	// right, so step back from an offset that hides nothing.
 	q.colOffset = max(q.colOffset, 0)
 	for q.colOffset > 0 {
-		if _, hidden := q.columns(avail, q.colOffset-1); hidden > 0 {
+		if _, hidden := q.columns(m, avail, q.colOffset-1); hidden > 0 {
 			break
 		}
 		q.colOffset--
 	}
-	cols, hidden := q.columns(avail, q.colOffset)
+	cols, hidden := q.columns(m, avail, q.colOffset)
 
+	// A column with settings has a gear after its label, drawn as a layer
+	// of its own so it can be clicked.
 	header := make([]string, len(cols))
+	var gears []*lipgloss.Layer
+	x := a.x + 1
 	for i, c := range cols {
-		header[i] = fit(m.label(c.name), c.width)
+		label := m.label(c.name)
+		header[i] = fit(label, c.width)
+		if c.gear && c.width > gearWidth {
+			room := c.width - gearWidth
+			header[i] = fit(label, room) + blank(gearWidth, 1)
+			at := x + min(lipgloss.Width(label), room)
+			if at+gearWidth <= a.x+a.w-moreWidth {
+				gears = append(gears, lipgloss.NewLayer(s.Arrow.Render(" "+gearGlyph)).ID(layerID(idGear, c.index)).X(at).Y(a.y).Z(zButton))
+			}
+		}
+		x += c.width + columnGap
 	}
 	gap := strings.Repeat(" ", columnGap)
 	layers := []*lipgloss.Layer{
 		lipgloss.NewLayer(s.Header.Render(fit(" "+strings.Join(header, gap), a.w))).X(a.x).Y(a.y).Z(zScenery),
 	}
+	layers = append(layers, gears...)
 	layers = append(layers, arrows(s, a.x+a.w-moreWidth, a.y, q.colOffset > 0, hidden > 0)...)
 
 	visible := a.h - 1
@@ -101,7 +116,7 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 		t := q.tickets[index]
 		cells := make([]string, len(cols))
 		for i, c := range cols {
-			cells[i] = fit(t.Field(c.name).String(), c.width)
+			cells[i] = fit(m.cell(t, c.name), c.width)
 		}
 		style := s.Row
 		if index%2 == 1 {
@@ -135,6 +150,10 @@ func arrows(s Styles, x, y int, left, right bool) []*lipgloss.Layer {
 type column struct {
 	name  string
 	width int
+	// index is the column's place in the profile's list.
+	index int
+	// gear says the column has settings.
+	gear bool
 }
 
 // columns picks the columns that fit in width cells and sizes them, and
@@ -145,28 +164,30 @@ type column struct {
 // columns are dropped from the end of the list until it fits. The first
 // column and the title are pinned. Offset skips that many of the other
 // columns from the left, which is how the table scrolls sideways.
-func (q *queue) columns(width, offset int) (cols []column, hidden int) {
-	var names []string
+func (q *queue) columns(m *Model, width, offset int) (cols []column, hidden int) {
+	var picked []column
 	for i, name := range q.cfg.Columns {
 		if i > 0 && name != ticket.FieldTitle && offset > 0 {
 			offset--
 			continue
 		}
-		names = append(names, name)
+		picked = append(picked, column{name: name, index: i, gear: m.hasSettings(name)})
 	}
 	for {
-		cols = make([]column, len(names))
-		used := columnGap * (len(names) - 1)
+		cols = append([]column(nil), picked...)
+		used := columnGap * (len(cols) - 1)
 		flex := -1
-		for i, name := range names {
-			cols[i].name = name
-			if name == ticket.FieldTitle {
+		for i, c := range cols {
+			if c.name == ticket.FieldTitle {
 				flex = i
 				continue
 			}
-			w := lipgloss.Width(name)
+			w := lipgloss.Width(c.name)
+			if c.gear {
+				w += gearWidth
+			}
 			for _, t := range q.tickets {
-				w = max(w, lipgloss.Width(t.Field(name).String()))
+				w = max(w, lipgloss.Width(m.cell(t, c.name)))
 			}
 			cols[i].width = min(w, maxColumnWidth)
 			used += cols[i].width
@@ -177,16 +198,16 @@ func (q *queue) columns(width, offset int) (cols []column, hidden int) {
 			used -= cols[flex].width
 		}
 		rest := width - used
-		if rest >= minTitleWidth || len(names) <= 2 {
+		if rest >= minTitleWidth || len(cols) <= 2 {
 			cols[flex].width = max(rest, 1)
 			return cols, hidden
 		}
 		// Drop the last column that is not the title.
-		drop := len(names) - 1
-		if names[drop] == ticket.FieldTitle {
+		drop := len(picked) - 1
+		if picked[drop].name == ticket.FieldTitle {
 			drop--
 		}
-		names = append(names[:drop], names[drop+1:]...)
+		picked = append(picked[:drop], picked[drop+1:]...)
 		hidden++
 	}
 }

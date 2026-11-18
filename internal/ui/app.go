@@ -16,6 +16,7 @@ import (
 	"github.com/lawsmd/tui-q/internal/browser"
 	"github.com/lawsmd/tui-q/internal/hit"
 	"github.com/lawsmd/tui-q/internal/ops"
+	"github.com/lawsmd/tui-q/internal/prefs"
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
@@ -51,6 +52,8 @@ const (
 	idField      = "field"
 	idForm       = "form"
 	idFormCancel = "formcancel"
+	idGear       = "gear"
+	idAction     = "action"
 )
 
 // hitEvent is one mouse gesture.
@@ -98,6 +101,8 @@ type Model struct {
 	prof   *profile.Profile
 	prov   provider.Provider
 	styles Styles
+	// prefs are the settings changed from inside the interface.
+	prefs *prefs.Store
 
 	w, h int
 
@@ -133,11 +138,23 @@ type Model struct {
 	comp *lipgloss.Compositor
 }
 
+// Options are the parts of the model that an instance or a machine
+// supplies. The zero value is a model with no saved settings.
+type Options struct {
+	// Prefs holds the settings changed from inside the interface. When it
+	// is nil they last until the program exits.
+	Prefs *prefs.Store
+}
+
 // New builds the model for a profile and its provider.
-func New(prof *profile.Profile, prov provider.Provider) *Model {
+func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
+	if opts.Prefs == nil {
+		opts.Prefs = prefs.Open("")
+	}
 	m := &Model{
 		prof:      prof,
 		prov:      prov,
+		prefs:     opts.Prefs,
 		styles:    DefaultStyles(),
 		activeTab: -1,
 		ops:       ops.New(),
@@ -564,6 +581,11 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		}
 	case idMore:
 		m.menuFor(ev)
+	case idGear:
+		q := m.queues[m.activeQueue]
+		if n >= 0 && n < len(q.cfg.Columns) {
+			m.columnMenu(q.cfg.Columns[n], ev.X, ev.Y)
+		}
 	case idLeft:
 		m.queues[m.activeQueue].scrollSideways(-1)
 	case idRight:

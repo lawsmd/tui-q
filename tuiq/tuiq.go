@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lawsmd/tui-q/internal/prefs"
 	"github.com/lawsmd/tui-q/internal/ui"
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/provider"
@@ -54,6 +55,12 @@ func Run(opts ...Option) error {
 	if len(os.Args) > 1 && os.Args[1] == "check" {
 		return check(os.Stdout, prof, prov)
 	}
-	_, err = tea.NewProgram(ui.New(prof, prov)).Run()
+	// Settings changed in the interface are kept per site. Without a place
+	// to keep them they last until the program exits.
+	uiOpts := ui.Options{}
+	if path, err := prefs.Path(prof.Provider.Kind + " " + prof.Provider.BaseURL); err == nil {
+		uiOpts.Prefs = prefs.Open(path)
+	}
+	_, err = tea.NewProgram(ui.New(prof, prov, uiOpts)).Run()
 	return err
 }

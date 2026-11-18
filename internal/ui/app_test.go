@@ -75,7 +75,7 @@ func newModel(t *testing.T, w, h int) *Model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := New(prof, fake.New(0))
+	m := New(prof, fake.New(0), Options{})
 	send(t, m, tea.WindowSizeMsg{Width: w, Height: h})
 	drain(t, m, m.Init())
 	return m

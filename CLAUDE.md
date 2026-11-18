@@ -54,6 +54,7 @@ into this repository.
 | `internal/ui` | tabs, table, board, context menu, ticket view, status bar |
 | `internal/hit` | mouse messages to gestures on layer IDs |
 | `internal/ops` | operation runner behind the status bar |
+| `internal/prefs` | settings changed from inside the interface, saved per site |
 | `internal/browser` | opens a URL in the default browser |
 | `scripts/check-names` | the naming guard |
 
