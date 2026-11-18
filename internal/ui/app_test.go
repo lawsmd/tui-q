@@ -103,7 +103,7 @@ func clickLayer(t *testing.T, m *Model, id string) {
 func TestQueueLoadsAndDraws(t *testing.T) {
 	m := newModel(t, 110, 30)
 	out := screen(m)
-	for _, want := range []string{"Open 5", "All 12", "DEMO-101", "refresh", "5 tickets"} {
+	for _, want := range []string{"Open (5 tickets)", "All (12 tickets)", "DEMO-101", "refresh", "5 tickets"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("screen lacks %q\n%s", want, out)
 		}
@@ -123,7 +123,7 @@ func TestClickRowOpensTicketTab(t *testing.T) {
 		t.Fatal("ticket still marked loading after the load finished")
 	}
 	out := screen(m)
-	for _, want := range []string{"DEMO-102", "open in browser", "Steps to reproduce", "Comments", "Status"} {
+	for _, want := range []string{"DEMO-102", "open in browser", "copy link", "Steps to reproduce", "Comments", "Status"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("ticket view lacks %q\n%s", want, out)
 		}

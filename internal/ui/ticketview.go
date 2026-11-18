@@ -81,6 +81,7 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 	}
 	if tab.t.URL != "" {
 		button(idOpen, "open in browser")
+		button(idCopyLink, "copy link")
 	}
 	if len(tab.transitions) > 0 {
 		button(idMove, "move"+editMark)

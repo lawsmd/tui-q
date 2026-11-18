@@ -41,6 +41,7 @@ const (
 	idRefresh    = "refresh"
 	idStatus     = "status"
 	idOpen       = "open"
+	idCopyLink   = "copylink"
 	idMore       = "more"
 	idLeft       = "left"
 	idRight      = "right"
@@ -607,6 +608,11 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		m.ops.Dismiss()
 	case idOpen:
 		return m.openInBrowser()
+	case idCopyLink:
+		if m.activeTab >= 0 {
+			t := m.tabs[m.activeTab].t
+			return m.copy(t.URL, "link to "+t.Key)
+		}
 	case idMove, idAssign, idField, idAction:
 		if m.activeTab < 0 {
 			return nil
