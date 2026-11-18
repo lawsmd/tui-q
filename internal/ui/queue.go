@@ -8,6 +8,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/lawsmd/tui-q/bigtext"
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/ticket"
 )
@@ -91,12 +92,27 @@ func (q *queue) lines() []line {
 			break
 		}
 		// A blank line sets each section off from what is above it.
-		out = append(out, line{ticket: -1}, line{ticket: -1, heading: fmt.Sprintf("%s  %d", name, len(members))})
+		out = append(out, line{ticket: -1})
+		for _, row := range q.heading(name, len(members)) {
+			out = append(out, line{ticket: -1, heading: row})
+		}
 		for n, i := range members {
 			out = append(out, line{ticket: i, odd: n%2 == 1})
 		}
 	}
 	return out
+}
+
+// heading is the rows of the heading of a section: its name and the
+// number of its tickets. With a heading font the name is drawn in it and
+// the number follows on the last row.
+func (q *queue) heading(name string, n int) []string {
+	rows, err := bigtext.Render(q.cfg.HeadingFont, name)
+	if q.cfg.HeadingFont == "" || err != nil {
+		return []string{fmt.Sprintf("%s  %d", name, n)}
+	}
+	rows[len(rows)-1] += fmt.Sprintf("  %d", n)
+	return rows
 }
 
 // count is the number of tickets the queue shows.
