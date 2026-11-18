@@ -66,7 +66,10 @@ The Jira client has `Do` for JSON and `Raw` for files.
 - A dragged card is drawn as a top layer with no ID, so the hit test reports the lane
   under it.
 - Tables drop low-priority columns when narrow, then scroll sideways with the first
-  column, the title and the icon columns pinned. Boards scroll sideways by lane and vertically inside a
+  column, the title and the icon columns pinned. The line between two column headings
+  is a handle: a drag on it sizes the column next to it, and the title takes the rest.
+  The widths are saved per queue with the other view settings, and the view menu resets
+  them. Boards scroll sideways by lane and vertically inside a
   lane. Sideways scrolling is on the arrow buttons, the arrow keys, a sideways wheel and
   shift with the wheel. The ticket sidebar moves under the main
   column when narrow.

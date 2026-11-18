@@ -22,6 +22,9 @@ type View struct {
 	// Show lists the fields the queue's table shows. Empty means the
 	// columns the profile gives the queue.
 	Show []string `json:"show,omitempty"`
+	// Widths holds the width in cells of each column the user has sized,
+	// by field.
+	Widths map[string]int `json:"widths,omitempty"`
 }
 
 // Store is the settings of one site. A Store with no path keeps them in
@@ -78,13 +81,18 @@ func (s *Store) SetColumn(field string, c Column) error {
 // View returns the settings of a queue.
 func (s *Store) View(queue string) View { return s.Views[queue] }
 
-// SetView changes the settings of a queue and saves the file.
-func (s *Store) SetView(queue string, v View) error {
-	if len(v.Show) == 0 {
+// PutView changes the settings of a queue in memory only.
+func (s *Store) PutView(queue string, v View) {
+	if len(v.Show) == 0 && len(v.Widths) == 0 {
 		delete(s.Views, queue)
 	} else {
 		s.Views[queue] = v
 	}
+}
+
+// SetView changes the settings of a queue and saves the file.
+func (s *Store) SetView(queue string, v View) error {
+	s.PutView(queue, v)
 	return s.save()
 }
 

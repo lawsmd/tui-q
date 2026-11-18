@@ -43,6 +43,7 @@ const (
 	idOpen       = "open"
 	idCopyLink   = "copylink"
 	idMore       = "more"
+	idEdge       = "edge"
 	idLeft       = "left"
 	idRight      = "right"
 	idLane       = "lane"
@@ -131,6 +132,8 @@ type Model struct {
 	menu *menu
 	form *form
 	drag *drag
+	// resize is the column edge being dragged, or nil.
+	resize *resize
 	// undo puts the screen back when the running write fails.
 	undo func()
 	// notice is a one-line message for the status bar. The next click
@@ -404,6 +407,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.ops.Locked() {
 			m.mouse.Cancel()
 			m.drag = nil
+			m.cancelResize()
 			return m, nil
 		}
 		var cmds []tea.Cmd
@@ -469,6 +473,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		case m.drag != nil:
 			m.drag = nil
 			m.mouse.Cancel()
+		case m.resize != nil:
+			m.cancelResize()
+			m.mouse.Cancel()
 		default:
 			m.activeTab = -1
 		}
@@ -521,11 +528,17 @@ func (m *Model) gesture(ev hit.Event) tea.Cmd {
 	case hit.DragStart:
 		m.startDrag(ev)
 	case hit.DragMove:
+		if m.resize != nil {
+			m.resizeTo(ev.X)
+		}
 		if m.drag != nil {
 			m.drag.x, m.drag.y = ev.X, ev.Y
 			m.drag.over = m.queues[m.activeQueue].laneName(ev.Over)
 		}
 	case hit.Drop:
+		if m.resize != nil {
+			return m.endResize()
+		}
 		return m.drop(ev)
 	}
 	return nil
@@ -653,9 +666,14 @@ func (m *Model) scroll(ev hit.Event) {
 	}
 }
 
-// startDrag picks up a card. A drag that starts anywhere else is ignored.
+// startDrag picks up a card or the edge of a table column. A drag that
+// starts anywhere else is ignored.
 func (m *Model) startDrag(ev hit.Event) {
 	kind, n := splitID(ev.ID)
+	if kind == idEdge && m.activeTab < 0 {
+		m.startResize(ev.X, n)
+		return
+	}
 	if kind != idCard || m.activeTab >= 0 || m.comp == nil {
 		return
 	}

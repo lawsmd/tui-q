@@ -23,6 +23,12 @@ func TestSettingsAreSavedAndReadBack(t *testing.T) {
 	if got := Open(path).View("Open").Show; len(got) != 2 || got[1] != "title" {
 		t.Fatalf("view read back = %v", got)
 	}
+	if err := s.SetView("Open", View{Widths: map[string]int{"status": 9}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := Open(path).View("Open"); got.Widths["status"] != 9 || len(got.Show) != 0 {
+		t.Fatalf("widths read back = %+v", got)
+	}
 	if err := s.SetColumn("assignee", Column{}); err != nil {
 		t.Fatal(err)
 	}

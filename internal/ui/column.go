@@ -7,7 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/lawsmd/tui-q/internal/prefs"
 	"github.com/lawsmd/tui-q/ticket"
 )
 
@@ -150,7 +149,9 @@ func (m *Model) viewMenu(x, y int) {
 			if sameSet(next, q.cfg.Columns) {
 				next = nil
 			}
-			return again(m.prefs.SetView(q.cfg.Name, prefs.View{Show: next}))
+			v := m.prefs.View(q.cfg.Name)
+			v.Show = next
+			return again(m.prefs.SetView(q.cfg.Name, v))
 		}})
 	}
 
@@ -164,6 +165,12 @@ func (m *Model) viewMenu(x, y int) {
 		options = append(options, menuItem{label, func() tea.Cmd {
 			c.FirstName = !c.FirstName
 			return again(m.prefs.SetColumn(name, c))
+		}})
+	}
+	if v := m.prefs.View(q.cfg.Name); len(v.Widths) > 0 {
+		options = append(options, menuItem{"Reset column widths", func() tea.Cmd {
+			v.Widths = nil
+			return again(m.prefs.SetView(q.cfg.Name, v))
 		}})
 	}
 	if len(options) > 0 {

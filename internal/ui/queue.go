@@ -15,6 +15,8 @@ import (
 // Column width limits for a table.
 const (
 	maxColumnWidth = 22
+	// minColumnWidth is the least a user can drag a column down to.
+	minColumnWidth = 3
 	minTitleWidth  = 20
 	columnGap      = 2
 	// moreWidth is the width of the menu button at the end of every row,
@@ -42,6 +44,10 @@ type queue struct {
 
 	// Set by the last draw, for the handlers that run before the next one.
 	cardW, cardH int
+	// cols are the columns of the table as drawn, and flex is the index
+	// of the one that takes the spare width.
+	cols []column
+	flex int
 }
 
 // line is one line of a table: a ticket, or the heading of a bucket.
@@ -149,6 +155,13 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 	}
 	cols, hidden := q.columns(m, avail, q.colOffset)
 
+	q.cols, q.flex = cols, len(cols)-1
+	for i, c := range cols {
+		if c.name == ticket.FieldTitle {
+			q.flex = i
+		}
+	}
+
 	header := make([]string, len(cols))
 	for i, c := range cols {
 		// An icon column is one cell wide and has no heading.
@@ -163,6 +176,17 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 		lipgloss.NewLayer(s.Header.Render(fit(" "+strings.Join(header, gap), a.w))).X(a.x).Y(a.y).Z(zScenery),
 	}
 	layers = append(layers, arrows(s, a.x+a.w-moreWidth, a.y, q.colOffset > 0, hidden > 0)...)
+
+	// The line between two headings is a handle that sizes a column.
+	x := a.x + 1
+	for i := 0; i < len(cols)-1; i++ {
+		x += cols[i].width
+		if target, _ := q.edge(i); !m.icons(cols[target].name) {
+			handle := s.Faint.Render("│ ")
+			layers = append(layers, lipgloss.NewLayer(handle).ID(layerID(idEdge, i)).X(x).Y(a.y).Z(zButton))
+		}
+		x += columnGap
+	}
 
 	lines := q.lines()
 	visible := a.h - 1
@@ -217,11 +241,23 @@ type column struct {
 	width int
 }
 
+// edge says which column the line after column i sizes, and whether a
+// move to the right widens it (1) or narrows it (-1). The column that
+// takes the spare width is never the one sized, so the line stays under
+// the pointer: left of that column the line moves the column before it,
+// and from there on the column after it.
+func (q *queue) edge(i int) (target, sign int) {
+	if i < q.flex {
+		return i, 1
+	}
+	return i + 1, -1
+}
+
 // columns picks the columns that fit in width cells and sizes them, and
 // reports how many were left out on the right.
 //
-// Every column is as wide as its longest value, up to a cap; the title
-// column takes what is left. When the title would get too little room,
+// Every column is as wide as the user dragged it, or else as its longest
+// value up to a cap; the title column takes what is left. When the title would get too little room,
 // columns are dropped from the end of the list until it fits. The first
 // column, the title and the icon columns are pinned. Offset skips that
 // many of the other columns from the left, which is how the table scrolls
@@ -240,6 +276,7 @@ func (q *queue) columns(m *Model, width, offset int) (cols []column, hidden int)
 		}
 		picked = append(picked, column{name: name})
 	}
+	widths := m.prefs.View(q.cfg.Name).Widths
 	for {
 		cols = append([]column(nil), picked...)
 		used := columnGap * (len(cols) - 1)
@@ -247,6 +284,11 @@ func (q *queue) columns(m *Model, width, offset int) (cols []column, hidden int)
 		for i, c := range cols {
 			if c.name == ticket.FieldTitle {
 				flex = i
+				continue
+			}
+			if set, ok := widths[c.name]; ok && !m.icons(c.name) {
+				cols[i].width = max(set, minColumnWidth)
+				used += cols[i].width
 				continue
 			}
 			w := lipgloss.Width(c.name)
