@@ -157,7 +157,7 @@ func TestSwitchQueueTab(t *testing.T) {
 }
 
 func TestWheelScrollsAndClamps(t *testing.T) {
-	m := newModel(t, 110, 10) // 6 table rows for 12 tickets
+	m := newModel(t, 110, 11) // 6 table rows for 12 tickets
 	clickLayer(t, m, layerID(idQueueTab, 1))
 	for i := 0; i < 10; i++ {
 		send(t, m, tea.MouseWheelMsg{X: 5, Y: 5, Button: tea.MouseWheelDown})

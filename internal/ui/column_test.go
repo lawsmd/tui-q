@@ -9,7 +9,7 @@ import (
 
 // headerLine is the header row of the table on screen.
 func headerLine(m *Model) string {
-	return strings.Split(screen(m), "\n")[2]
+	return strings.Split(screen(m), "\n")[3]
 }
 
 func TestViewGearPicksColumnsAndOptions(t *testing.T) {

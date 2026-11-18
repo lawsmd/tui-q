@@ -41,14 +41,17 @@ func TestBucketsAndTheSingleTabRow(t *testing.T) {
 	if !strings.Contains(rows[0], "Work") || !strings.Contains(rows[0], "refresh") {
 		t.Fatalf("top row: %q", rows[0])
 	}
-	if !strings.Contains(rows[1], "Key") || !strings.Contains(rows[2], "Active") {
-		t.Fatalf("the table does not start under the one tab row:\n%s\n%s", rows[1], rows[2])
+	if !strings.Contains(rows[2], "Key") || !strings.Contains(rows[4], "Active") || strings.TrimSpace(rows[1]+rows[3]) != "" {
+		t.Fatalf("the table does not start under the one tab row:\n%s\n%s", rows[2], rows[4])
 	}
 
 	// Every ticket is listed once, under the heading of its bucket.
 	q := m.queues[0]
 	section, seen := "", 0
 	for _, ln := range q.lines() {
+		if ln.ticket < 0 && ln.heading == "" {
+			continue
+		}
 		if ln.ticket < 0 {
 			section = strings.Fields(ln.heading)[0]
 			continue

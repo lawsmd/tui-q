@@ -54,7 +54,7 @@ type line struct {
 }
 
 // lines lists the lines of a table from top to bottom. A table with
-// buckets has a heading over each one, and a last section named Other for
+// buckets has a blank line and a heading over each one, and a last section named Other for
 // the tickets that match no bucket.
 func (q *queue) lines() []line {
 	if len(q.cfg.Buckets) == 0 {
@@ -84,7 +84,8 @@ func (q *queue) lines() []line {
 		} else if len(members) == 0 {
 			break
 		}
-		out = append(out, line{ticket: -1, heading: fmt.Sprintf("%s  %d", name, len(members))})
+		// A blank line sets each section off from what is above it.
+		out = append(out, line{ticket: -1}, line{ticket: -1, heading: fmt.Sprintf("%s  %d", name, len(members))})
 		for n, i := range members {
 			out = append(out, line{ticket: i, odd: n%2 == 1})
 		}
@@ -149,6 +150,9 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 	q.offset = clamp(q.offset, 0, len(lines)-visible)
 	for row := 0; row < visible && q.offset+row < len(lines); row++ {
 		ln := lines[q.offset+row]
+		if ln.ticket < 0 && ln.heading == "" {
+			continue
+		}
 		if ln.ticket < 0 {
 			heading := s.Bucket.Render(fit(" "+ln.heading, a.w))
 			layers = append(layers, lipgloss.NewLayer(heading).X(a.x).Y(a.y+1+row).Z(zScenery))

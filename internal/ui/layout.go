@@ -49,6 +49,8 @@ func (m *Model) compose() *lipgloss.Compositor {
 		root.AddLayers(m.ticketTabs(0, 1, w)...)
 	}
 
+	// One blank line sets the tab rows off from what is under them.
+	top++
 	content := area{x: 0, y: top, w: w, h: h - top - 1}
 	if m.activeTab >= 0 {
 		root.AddLayers(m.tabs[m.activeTab].layers(m, content)...)
