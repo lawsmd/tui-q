@@ -96,7 +96,7 @@ func (m *Model) queueTabRow(w int) (row []*lipgloss.Layer, end, limit int) {
 	for i, q := range m.queues {
 		names[i] = q.cfg.Name
 		if len(q.tickets) > 0 || !q.loadedAt.IsZero() {
-			names[i] = fmt.Sprintf("%s (%d)", q.cfg.Name, len(q.tickets))
+			names[i] = fmt.Sprintf("%s (%d)", q.cfg.Name, q.count())
 		}
 	}
 

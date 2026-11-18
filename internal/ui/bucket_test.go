@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -78,4 +79,14 @@ func TestBucketsAndTheSingleTabRow(t *testing.T) {
 		t.Fatal("the queue tab did not bring the queue back")
 	}
 	checkFrames(t, m, "buckets")
+
+	// With hide_unmatched the Other section and its tickets are left out
+	// of the table and of the count on the tab.
+	all := q.count()
+	q.cfg.HideUnmatched = true
+	shown := q.count()
+	out := screen(m)
+	if shown >= all || strings.Contains(out, "Other") || !strings.Contains(out, fmt.Sprintf("Work (%d)", shown)) {
+		t.Fatalf("%d of %d tickets shown with hide_unmatched:\n%s", shown, all, out)
+	}
 }

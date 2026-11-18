@@ -51,6 +51,9 @@ type Queue struct {
 	// bottom. A ticket goes in the first bucket it matches, and a ticket
 	// that matches none goes in a last section named Other.
 	Buckets []Bucket `toml:"bucket"`
+	// HideUnmatched leaves out the tickets that match no bucket, so the
+	// table has no Other section.
+	HideUnmatched bool `toml:"hide_unmatched"`
 	// Refresh is how often the queue reloads on its own. Zero means only
 	// on request.
 	Refresh Duration `toml:"refresh"`
@@ -188,6 +191,9 @@ func (p *Profile) finish() error {
 		}
 		if len(q.Columns) == 0 {
 			q.Columns = []string{ticket.FieldKey, ticket.FieldTitle, ticket.FieldStatus, ticket.FieldAssignee}
+		}
+		if q.HideUnmatched && len(q.Buckets) == 0 {
+			return fmt.Errorf("profile: queue %q: hide_unmatched needs buckets", q.Name)
 		}
 		if len(q.Buckets) > 0 && q.Layout != LayoutTable {
 			return fmt.Errorf("profile: queue %q: only a table has buckets", q.Name)

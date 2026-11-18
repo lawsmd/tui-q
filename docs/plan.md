@@ -46,7 +46,8 @@ The Jira client has `Do` for JSON and `Raw` for files.
   Dropping a card on a status lane runs a transition; on any other lane, a field edit.
 - `[[queue.bucket]]`: a titled section of a table, with a name, a field (the status by
   default) and the values that put a ticket in it. Buckets are drawn from top to bottom
-  with a blank line above each, and scroll as one list. A ticket that matches none is listed under `Other`.
+  with a blank line above each, and scroll as one list. A ticket that matches none is listed under `Other`, or left out
+  of the table and the count when the queue sets `hide_unmatched = true`.
 - `[ticket]`: main fields and sidebar fields in order; whether comments are shown.
 - `[fields.<name>]`: platform field ID, type, label. A field with no label is shown
   under the name the platform gives it.

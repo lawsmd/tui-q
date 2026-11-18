@@ -81,7 +81,7 @@ func (q *queue) lines() []line {
 		name := "Other"
 		if j < len(q.cfg.Buckets) {
 			name = q.cfg.Buckets[j].Name
-		} else if len(members) == 0 {
+		} else if len(members) == 0 || q.cfg.HideUnmatched {
 			break
 		}
 		// A blank line sets each section off from what is above it.
@@ -91,6 +91,20 @@ func (q *queue) lines() []line {
 		}
 	}
 	return out
+}
+
+// count is the number of tickets the queue shows.
+func (q *queue) count() int {
+	if !q.cfg.HideUnmatched {
+		return len(q.tickets)
+	}
+	n := 0
+	for _, ln := range q.lines() {
+		if ln.ticket >= 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // layers draws the queue in the layout its profile asks for.
