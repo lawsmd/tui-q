@@ -90,30 +90,14 @@ func (m *Model) queueTabRow(w int) (row []*lipgloss.Layer, end, limit int) {
 		layers = append(layers, lipgloss.NewLayer(gear).ID(idGear).X(buttonX).Z(zItem))
 	}
 
-	// Each tab carries the number of tickets in its queue, spelled out so
-	// it is not read as part of the name. When the tabs do not all fit
-	// that way, the count is cut down to the number in brackets.
-	labels := func(long bool) (out []string, width int) {
-		for _, q := range m.queues {
-			label := q.cfg.Name
-			if len(q.tickets) > 0 || !q.loadedAt.IsZero() {
-				switch {
-				case !long:
-					label = fmt.Sprintf("%s (%d)", label, len(q.tickets))
-				case len(q.tickets) == 1:
-					label += " (1 ticket)"
-				default:
-					label = fmt.Sprintf("%s (%d tickets)", label, len(q.tickets))
-				}
-			}
-			out = append(out, label)
-			width += lipgloss.Width(s.Tab.Render(label))
+	// Each tab carries the number of tickets in its queue, in brackets to
+	// keep it apart from the name.
+	names := make([]string, len(m.queues))
+	for i, q := range m.queues {
+		names[i] = q.cfg.Name
+		if len(q.tickets) > 0 || !q.loadedAt.IsZero() {
+			names[i] = fmt.Sprintf("%s (%d)", q.cfg.Name, len(q.tickets))
 		}
-		return out, width
-	}
-	names, width := labels(true)
-	if width > buttonX-1 {
-		names, _ = labels(false)
 	}
 
 	x := 0
