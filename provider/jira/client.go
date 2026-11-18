@@ -96,6 +96,42 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 	return nil
 }
 
+// Raw sends a request whose body is not JSON, or whose response is not,
+// such as a file. target is a path that starts with "/" or a full URL on
+// this site; a URL on any other host is refused, since the request carries
+// the credentials. The caller reads and closes the body of the response. A
+// status outside 200-299 is returned as an *Error.
+func (c *Client) Raw(ctx context.Context, method, target string, header http.Header, body io.Reader) (*http.Response, error) {
+	full := target
+	if strings.HasPrefix(target, "/") {
+		full = c.base + target
+	} else if !strings.HasPrefix(target, c.base+"/") {
+		return nil, fmt.Errorf("%s %s: not a URL on %s", method, target, c.base)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, full, body)
+	if err != nil {
+		return nil, err
+	}
+	for name, values := range header {
+		req.Header[name] = values
+	}
+	req.SetBasicAuth(c.user, c.token)
+	// A file can take longer than the limit Do works under; the context
+	// bounds this request.
+	client := *c.http
+	client.Timeout = 0
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s %s: %w", method, target, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		return nil, &Error{Method: method, Path: target, Status: resp.StatusCode, Messages: errorMessages(data)}
+	}
+	return resp, nil
+}
+
 // errorMessages pulls the readable parts out of a Jira error body.
 func errorMessages(data []byte) []string {
 	var body struct {

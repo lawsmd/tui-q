@@ -55,6 +55,9 @@ func (m *Model) openMenu(t ticket.Ticket, x, y int) {
 		items = append(items, menuItem{"Assign to me", func() tea.Cmd { return m.assign(t, m.me) }})
 	}
 	items = append(items, menuItem{"Assign to...", func() tea.Cmd { m.assignMenu(t, x, y); return nil }})
+	for _, i := range m.actionsFor(t) {
+		items = append(items, menuItem{m.actions[i].Name, func() tea.Cmd { return m.runAction(i, t) }})
+	}
 	m.showMenu(t.Key, x, y, items)
 }
 

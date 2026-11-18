@@ -3,6 +3,7 @@ package jira
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -344,5 +345,43 @@ func TestNewReadsCredentialsFromEnvironment(t *testing.T) {
 	t.Setenv("TQ_TEST_TOKEN", "secret")
 	if _, err := provider.New(cfg); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRawSendsCredentialsOnlyToItsOwnSite(t *testing.T) {
+	var got *http.Request
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r
+		if r.URL.Path == "/missing" {
+			w.WriteHeader(http.StatusNotFound)
+			io.WriteString(w, `{"errorMessages": ["No such file"]}`)
+			return
+		}
+		io.WriteString(w, "file body")
+	}))
+	defer site.Close()
+	c := NewClient(site.URL, "sam@example.com", "token")
+	ctx := context.Background()
+
+	for _, target := range []string{"/files/1", site.URL + "/files/1"} {
+		resp, err := c.Raw(ctx, http.MethodGet, target, http.Header{"Accept": {"*/*"}}, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", target, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		user, _, ok := got.BasicAuth()
+		if string(body) != "file body" || !ok || user != "sam@example.com" || got.Header.Get("Accept") != "*/*" {
+			t.Errorf("%s: body=%q user=%q accept=%q", target, body, user, got.Header.Get("Accept"))
+		}
+	}
+
+	got = nil
+	if _, err := c.Raw(ctx, http.MethodGet, "https://elsewhere.example.com/files/1", nil, nil); err == nil || got != nil {
+		t.Fatalf("a URL on another host: err=%v, request sent=%v", err, got != nil)
+	}
+	var e *Error
+	if _, err := c.Raw(ctx, http.MethodGet, "/missing", nil, nil); !errors.As(err, &e) || e.Status != 404 || !strings.Contains(err.Error(), "No such file") {
+		t.Fatalf("missing file: %v", err)
 	}
 }

@@ -8,6 +8,7 @@ package ops
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -21,6 +22,10 @@ const logSize = 50
 // Func is the work of one operation. The message it returns is delivered
 // to the UI when the operation succeeds.
 type Func func(ctx context.Context) (tea.Msg, error)
+
+// StepFunc is the work of an operation with several steps. It calls report
+// with the name of each step as it starts, for the status bar.
+type StepFunc func(ctx context.Context, report func(step string)) (tea.Msg, error)
 
 // DoneMsg reports that an operation ended. The UI passes it to Finish.
 type DoneMsg struct {
@@ -38,6 +43,20 @@ type Entry struct {
 	Started time.Time
 	Ended   time.Time
 	Err     error
+
+	// step is written by the operation's goroutine and read by the UI.
+	step *atomic.Pointer[string]
+}
+
+// Step is the step a running operation last reported, or "".
+func (e Entry) Step() string {
+	if e.step == nil {
+		return ""
+	}
+	if s := e.step.Load(); s != nil {
+		return *s
+	}
+	return ""
 }
 
 // Runner tracks operations. It is owned by the UI model and touched only
@@ -56,14 +75,25 @@ func New() *Runner { return &Runner{Timeout: DefaultTimeout} }
 
 // Start records an operation and returns the command that runs it.
 func (r *Runner) Start(label string, write bool, fn Func) tea.Cmd {
+	return r.StartSteps(label, write, 0, func(ctx context.Context, _ func(string)) (tea.Msg, error) {
+		return fn(ctx)
+	})
+}
+
+// StartSteps is Start for an operation that reports its steps. A timeout
+// of zero means the runner's own.
+func (r *Runner) StartSteps(label string, write bool, timeout time.Duration, fn StepFunc) tea.Cmd {
 	r.next++
 	id := r.next
-	r.active = append(r.active, Entry{ID: id, Label: label, Write: write, Started: time.Now()})
-	timeout := r.Timeout
+	step := &atomic.Pointer[string]{}
+	r.active = append(r.active, Entry{ID: id, Label: label, Write: write, Started: time.Now(), step: step})
+	if timeout <= 0 {
+		timeout = r.Timeout
+	}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		msg, err := fn(ctx)
+		msg, err := fn(ctx, func(s string) { step.Store(&s) })
 		if err != nil {
 			return DoneMsg{ID: id, Err: err}
 		}

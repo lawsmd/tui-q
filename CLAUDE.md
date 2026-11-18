@@ -46,6 +46,7 @@ into this repository.
 |---|---|
 | `cmd/tq` | stock binary and the demo profile |
 | `tuiq` | `tuiq.Run`, the one entry point |
+| `ext` | what an instance passes to `tuiq.Run` to add behaviour: `ext.Action` so far |
 | `ticket` | platform-neutral ticket model |
 | `provider` | `Provider` interface and registry |
 | `provider/fake` | in-memory provider with fixture tickets |
@@ -69,6 +70,8 @@ into this repository.
   `Update`. Reads leave input free; writes lock it until they finish.
 - A frame must be exactly the size of the pane. `TestFrameMatchesPaneAtEverySize` checks
   this; extend it when a view is added.
+- An instance action runs through `Model.doAction`, which locks input and shows the
+  steps the action reports. The core never learns what an action does.
 - A profile never holds a secret. It names the environment variables that do.
 
 ## Commands

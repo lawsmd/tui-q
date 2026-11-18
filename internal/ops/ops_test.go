@@ -55,3 +55,20 @@ func TestWriteLocksAndFailureIsKept(t *testing.T) {
 		t.Fatalf("log has %d entries, want 1", len(r.Log()))
 	}
 }
+
+func TestStepsAreReportedWhileTheOperationRuns(t *testing.T) {
+	r := New()
+	cmd := r.StartSteps("copy", true, 0, func(_ context.Context, report func(string)) (tea.Msg, error) {
+		report("first")
+		report("second")
+		return nil, nil
+	})
+	if cur, _ := r.Current(); cur.Step() != "" {
+		t.Fatalf("step before the run = %q", cur.Step())
+	}
+	done := cmd().(DoneMsg)
+	if cur, _ := r.Current(); cur.Step() != "second" {
+		t.Fatalf("step = %q, want the last one reported", cur.Step())
+	}
+	r.Finish(done)
+}

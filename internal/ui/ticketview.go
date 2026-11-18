@@ -88,6 +88,9 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 	if tab.editable(ticket.FieldAssignee) {
 		button(idAssign, "assign"+editMark)
 	}
+	for _, i := range m.actionsFor(tab.t) {
+		button(layerID(idAction, i), m.actions[i].Name)
+	}
 	if tab.loading {
 		layers = append(layers, lipgloss.NewLayer(s.Faint.Render("loading...")).X(x).Y(a.y).Z(zScenery))
 	}

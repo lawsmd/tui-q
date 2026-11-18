@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lawsmd/tui-q/ext"
 	"github.com/lawsmd/tui-q/internal/prefs"
 	"github.com/lawsmd/tui-q/internal/ui"
 	"github.com/lawsmd/tui-q/profile"
@@ -21,6 +22,7 @@ import (
 
 type config struct {
 	profileText string
+	actions     []ext.Action
 }
 
 // Option changes how Run behaves.
@@ -31,6 +33,12 @@ type Option func(*config)
 // names a file that is loaded in its place.
 func WithProfile(text string) Option {
 	return func(c *config) { c.profileText = text }
+}
+
+// WithActions adds the instance's own actions to every ticket: a button in
+// the ticket view and a line in the context menu for each.
+func WithActions(actions ...ext.Action) Option {
+	return func(c *config) { c.actions = append(c.actions, actions...) }
 }
 
 // Run starts the interface and returns when the user quits. When the
@@ -57,7 +65,7 @@ func Run(opts ...Option) error {
 	}
 	// Settings changed in the interface are kept per site. Without a place
 	// to keep them they last until the program exits.
-	uiOpts := ui.Options{}
+	uiOpts := ui.Options{Actions: cfg.actions}
 	if path, err := prefs.Path(prof.Provider.Kind + " " + prof.Provider.BaseURL); err == nil {
 		uiOpts.Prefs = prefs.Open(path)
 	}

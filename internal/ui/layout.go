@@ -130,6 +130,9 @@ func (m *Model) statusBar(w int) *lipgloss.Layer {
 	if cur, ok := m.ops.Current(); ok {
 		style = s.StatusBusy
 		left = m.spin.View() + " " + cur.Label
+		if step := cur.Step(); step != "" {
+			left += ": " + step
+		}
 		if cur.Write {
 			left += " (input locked)"
 		}

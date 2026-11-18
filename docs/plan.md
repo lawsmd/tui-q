@@ -29,13 +29,14 @@ instance first needs it.
 
 | Extension | Purpose |
 |---|---|
-| `ext.Action` | a button in the ticket view and a context menu entry; gets the ticket, the provider client, and a progress reporter that writes to the status bar |
+| `ext.Action` | a button in the ticket view and a context menu entry; gets the ticket, the provider, the answers to its own questions, and a progress reporter that writes to the status bar. Built; passed with `tuiq.WithActions` |
 | `ext.FieldRenderer` | custom drawing of one field in tables, cards and the sidebar |
 | `ext.Theme` | styles for the whole program |
 | `ext.Panel` | an extra section in the ticket view |
 | `ext.View` | a custom top-level tab |
 
 Provider packages export their HTTP client so an instance action can call any endpoint.
+The Jira client has `Do` for JSON and `Raw` for files.
 
 ## Profile
 
@@ -77,6 +78,9 @@ Provider packages export their HTTP client so an instance action can call any en
   the write fails, or the platform asks for values first, the card goes back. A move
   that requires fields opens a form for them.
 - After every write the ticket is read back and every queue reloads.
+- An instance action runs as a write. When it has questions, a form asks them first and
+  cancelling the form cancels the action. The status bar shows the step the action last
+  reported. An action may run for five minutes unless it sets its own limit.
 
 ## Phases
 
@@ -87,7 +91,7 @@ Provider packages export their HTTP client so an instance action can call any en
 | 2 | Jira provider (read): search, ticket load, field mapping, rich text to Markdown; first instance module | done; `tq check` reads every queue of a profile once without the interface |
 | 3 | Board layout, drag between lanes, context menu, sideways scrolling | done; a drop reports the move and changes nothing until phase 4 |
 | 4 | Writes: transitions with required-field forms, assignment, field edits | done against the fake provider and against recorded requests; not yet run against a live site |
-| 5 | `ext.Action` and the first instance-only action | |
+| 5 | `ext.Action` and the first instance-only action | done against the fake provider; the instance action is tested against a local stand-in for the site and not yet run against a live one |
 | 6 | Azure DevOps provider and a second instance; macOS and Linux run | |
 | 7 | Disk snapshots, timed refresh, themes, remaining extension points, docs | |
 

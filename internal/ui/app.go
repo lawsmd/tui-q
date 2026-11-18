@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/lawsmd/tui-q/ext"
 	"github.com/lawsmd/tui-q/internal/browser"
 	"github.com/lawsmd/tui-q/internal/hit"
 	"github.com/lawsmd/tui-q/internal/ops"
@@ -103,6 +104,8 @@ type Model struct {
 	styles Styles
 	// prefs are the settings changed from inside the interface.
 	prefs *prefs.Store
+	// actions are the instance's own actions on a ticket.
+	actions []ext.Action
 
 	w, h int
 
@@ -144,6 +147,8 @@ type Options struct {
 	// Prefs holds the settings changed from inside the interface. When it
 	// is nil they last until the program exits.
 	Prefs *prefs.Store
+	// Actions are the instance's own actions on a ticket.
+	Actions []ext.Action
 }
 
 // New builds the model for a profile and its provider.
@@ -155,6 +160,7 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 		prof:      prof,
 		prov:      prov,
 		prefs:     opts.Prefs,
+		actions:   opts.Actions,
 		styles:    DefaultStyles(),
 		activeTab: -1,
 		ops:       ops.New(),
@@ -212,7 +218,11 @@ func (m *Model) label(name string) string {
 // start runs a provider call through the operation runner and keeps the
 // status bar spinner ticking while it runs.
 func (m *Model) start(label string, write bool, fn ops.Func) tea.Cmd {
-	cmd := m.ops.Start(label, write, fn)
+	return m.spinWith(m.ops.Start(label, write, fn))
+}
+
+// spinWith adds the spinner's tick to the command of a new operation.
+func (m *Model) spinWith(cmd tea.Cmd) tea.Cmd {
 	if m.spinning {
 		return cmd
 	}
@@ -596,12 +606,14 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		m.ops.Dismiss()
 	case idOpen:
 		return m.openInBrowser()
-	case idMove, idAssign, idField:
+	case idMove, idAssign, idField, idAction:
 		if m.activeTab < 0 {
 			return nil
 		}
 		tab := m.tabs[m.activeTab]
 		switch {
+		case kind == idAction:
+			return m.runAction(n, tab.t)
 		case kind == idMove:
 			m.moveMenu(tab.t, tab.transitions, ev.X, ev.Y)
 		case kind == idAssign:
