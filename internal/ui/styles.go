@@ -67,6 +67,8 @@ func DefaultStyles() Styles {
 		warn    = lipgloss.Color("#e0af68")
 		bad     = lipgloss.Color("#f7768e")
 		zebra   = lipgloss.Color("#1e2030")
+		band    = lipgloss.Color("#394b70")
+		bright  = lipgloss.Color("#e6ebff")
 	)
 	return Styles{
 		TabRow:    lipgloss.NewStyle().Background(bar),
@@ -88,7 +90,7 @@ func DefaultStyles() Styles {
 		ArrowOff: lipgloss.NewStyle().Foreground(barAlt),
 
 		LaneHeader: lipgloss.NewStyle().Background(barAlt).Foreground(text).Bold(true),
-		Bucket:     lipgloss.NewStyle().Background(barAlt).Foreground(text).Bold(true),
+		Bucket:     lipgloss.NewStyle().Background(band).Foreground(bright).Bold(true),
 		LaneTarget: lipgloss.NewStyle().Background(accent).Foreground(onLight).Bold(true),
 		CardBorder: lipgloss.NewStyle().Foreground(dim),
 		CardKey:    lipgloss.NewStyle().Foreground(accent).Bold(true),
