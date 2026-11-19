@@ -20,6 +20,9 @@ type Config struct {
 	// credentials. A profile never holds a secret.
 	UserEnv  string `toml:"user_env"`
 	TokenEnv string `toml:"token_env"`
+	// DefaultProject is the project a bare ticket number is looked up in,
+	// on a platform whose ticket keys carry a project.
+	DefaultProject string `toml:"default_project"`
 	// Fields maps a profile field name to the platform's field ID.
 	Fields map[string]string `toml:"-"`
 }
@@ -27,6 +30,11 @@ type Config struct {
 // Provider is one ticketing platform. Every method may block on the network;
 // the UI calls them only through the operation runner.
 type Provider interface {
+	// Resolve reads what a user typed or pasted to name a ticket, such as
+	// a number, a key or a link, and returns the ID that Get takes. It
+	// does not use the network. KeyRef and NumberRef do the reading for
+	// the two common shapes of ID.
+	Resolve(input string) (string, error)
 	// Search runs a query written in the platform's own query language.
 	Search(ctx context.Context, query string) ([]ticket.Ticket, error)
 	// Get loads one ticket in full, with body and comments.

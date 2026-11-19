@@ -41,6 +41,8 @@ The Jira client has `Do` for JSON and `Raw` for files.
 ## Profile
 
 - `[provider]`: kind, base URL, names of the credential environment variables.
+  `default_project` names the project a bare ticket number is looked up in, on a
+  platform whose ticket keys carry a project.
 - `[[queue]]`: name, query in the platform's own language, `layout` (`table` or `board`),
   columns or card fields, refresh interval. A board names the field its lanes group by.
   Dropping a card on a status lane runs a transition; on any other lane, a field edit.
@@ -61,6 +63,12 @@ The Jira client has `Do` for JSON and `Raw` for files.
 
 - Top row: queue tabs. Second row: open tickets. Last row: status bar. A blank line follows the tab rows. A profile with
   one queue has one tab row, with the open tickets after the queue.
+- The top row has a jump box left of the gear. A click on it or the `/` key gives it
+  the keyboard, and it widens to hold a link. `enter` opens the ticket named by a
+  number, a key or a pasted link in a ticket tab, whether or not a queue lists it;
+  `esc` or a click elsewhere closes the box. The provider's `Resolve` reads the text.
+  When the queue tabs leave too little room the box is drawn as a `go to` button, and
+  in a narrower pane it is left out and `/` still opens it.
 - Every frame is a Lip Gloss compositor tree. `internal/hit` reports click, right-click,
   drag, drop and wheel against layer IDs.
 - A dragged card is drawn as a top layer with no ID, so the hit test reports the lane

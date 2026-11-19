@@ -100,6 +100,17 @@ func (m *Model) queueTabRow(w int) (row []*lipgloss.Layer, end, limit int) {
 		}
 	}
 
+	// The jump box takes what the queue tabs leave.
+	need := 0
+	for _, name := range names {
+		need += lipgloss.Width(s.Tab.Render(name))
+	}
+	jump, jumpX := m.jumpLayer(buttonX-1, need)
+	if jump != nil {
+		layers = append(layers, jump)
+	}
+	buttonX = jumpX
+
 	x := 0
 	for i := range m.queues {
 		style := s.Tab

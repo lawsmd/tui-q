@@ -14,6 +14,11 @@ type Styles struct {
 	TabActive lipgloss.Style
 	Button    lipgloss.Style
 
+	// Jump is the box that takes a ticket number, and JumpHint the text in
+	// it while it is empty.
+	Jump     lipgloss.Style
+	JumpHint lipgloss.Style
+
 	SubTabRow    lipgloss.Style
 	SubTab       lipgloss.Style
 	SubTabActive lipgloss.Style
@@ -75,6 +80,9 @@ func DefaultStyles() Styles {
 		Tab:       lipgloss.NewStyle().Background(bar).Foreground(dim).Padding(0, 2),
 		TabActive: lipgloss.NewStyle().Background(accent).Foreground(onLight).Bold(true).Padding(0, 2),
 		Button:    lipgloss.NewStyle().Background(barAlt).Foreground(text).Padding(0, 1),
+
+		Jump:     lipgloss.NewStyle().Background(barAlt).Foreground(text),
+		JumpHint: lipgloss.NewStyle().Background(barAlt).Foreground(dim),
 
 		SubTabRow:    lipgloss.NewStyle().Background(barAlt),
 		SubTab:       lipgloss.NewStyle().Background(barAlt).Foreground(dim).Padding(0, 1),

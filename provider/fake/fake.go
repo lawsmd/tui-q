@@ -141,6 +141,12 @@ func matches(t ticket.Ticket, terms []term) bool {
 	return true
 }
 
+// Resolve reads a ticket key. A bare number is taken to be in the demo
+// project.
+func (p *Provider) Resolve(input string) (string, error) {
+	return provider.KeyRef(input, "DEMO")
+}
+
 func (p *Provider) find(id string) (*ticket.Ticket, error) {
 	for i := range p.tickets {
 		if p.tickets[i].ID == id {

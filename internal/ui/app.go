@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -57,6 +58,7 @@ const (
 	idFormCancel = "formcancel"
 	idGear       = "gear"
 	idAction     = "action"
+	idJump       = "jump"
 )
 
 // hitEvent is one mouse gesture.
@@ -134,6 +136,10 @@ type Model struct {
 	drag *drag
 	// resize is the column edge being dragged, or nil.
 	resize *resize
+	// jump is the box on the top row that takes a ticket number, key or
+	// link, and jumping says it has the keyboard.
+	jump    textinput.Model
+	jumping bool
 	// undo puts the screen back when the running write fails.
 	undo func()
 	// notice is a one-line message for the status bar. The next click
@@ -170,6 +176,7 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 		ops:       ops.New(),
 		spin:      spinner.New(spinner.WithSpinner(spinner.MiniDot)),
 	}
+	m.jump = newJump(m.styles)
 	for i := range prof.Queues {
 		m.queues = append(m.queues, &queue{cfg: &prof.Queues[i]})
 	}
@@ -368,6 +375,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			tab.main = nil
 		}
 
+	case jumpedMsg:
+		m.showLoaded(msg)
+
 	case transitionsMsg:
 		m.moveMenu(msg.t, msg.trs, msg.x, msg.y)
 
@@ -401,6 +411,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.formUpdate(msg)
 		}
+		if m.jumping {
+			return m, m.jumpKey(msg)
+		}
 		return m, m.key(msg)
 
 	case tea.MouseMsg:
@@ -425,8 +438,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	default:
 		// Anything else is a message one of the form's fields sent itself.
+		// Otherwise it is pasted text or a cursor blink for the jump box.
 		if m.form != nil {
 			return m.formUpdate(msg)
+		}
+		if m.jumping {
+			var cmd tea.Cmd
+			m.jump, cmd = m.jump.Update(msg)
+			return m, cmd
 		}
 	}
 	return m, nil
@@ -459,6 +478,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 	case "r":
 		return m.refresh()
+	case "/":
+		return m.focusJump()
 	case "tab":
 		m.activeQueue = (m.activeQueue + 1) % len(m.queues)
 		m.activeTab = -1
@@ -520,6 +541,10 @@ func (m *Model) gesture(ev hit.Event) tea.Cmd {
 	switch ev.Kind {
 	case hit.Click:
 		m.notice = ""
+		// A click anywhere but the jump box gives the keyboard back.
+		if kind, _ := splitID(ev.ID); m.jumping && kind != idJump {
+			m.blurJump()
+		}
 		return m.click(ev)
 	case hit.RightClick:
 		m.menuFor(ev)
@@ -609,6 +634,8 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		}
 	case idMore:
 		m.menuFor(ev)
+	case idJump:
+		return m.focusJump()
 	case idGear:
 		m.viewMenu(ev.X, ev.Y)
 	case idLeft:

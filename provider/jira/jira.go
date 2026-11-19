@@ -41,6 +41,8 @@ type Provider struct {
 	client *Client
 	// fields maps a profile field name to a Jira field ID.
 	fields map[string]string
+	// project is the project a bare issue number is looked up in.
+	project string
 
 	// meta remembers, per issue and Jira field ID, what the edit and
 	// transition screens said about each field.
@@ -66,7 +68,15 @@ func New(cfg provider.Config) (*Provider, error) {
 	if token == "" {
 		return nil, fmt.Errorf("jira: environment variable %s is not set", cfg.TokenEnv)
 	}
-	return NewProvider(NewClient(cfg.BaseURL, user, token), cfg.Fields), nil
+	p := NewProvider(NewClient(cfg.BaseURL, user, token), cfg.Fields)
+	p.project = cfg.DefaultProject
+	return p, nil
+}
+
+// Resolve reads an issue key from a number, a key or a link to an issue.
+// A bare number is taken to be in the profile's default project.
+func (p *Provider) Resolve(input string) (string, error) {
+	return provider.KeyRef(input, p.project)
 }
 
 // NewProvider builds a Provider around an existing Client.

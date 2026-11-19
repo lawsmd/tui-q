@@ -32,6 +32,7 @@ go run ./cmd/tq
 | `esc` | back to the queue |
 | `ctrl+w` | close the ticket tab |
 | `r` | reload |
+| Click `go to ticket`, or `/` | type or paste a ticket number, key or link; `enter` opens it |
 | `o` | open the ticket in the browser |
 | `q` | quit |
 
