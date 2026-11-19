@@ -51,6 +51,7 @@ into this repository.
 | `provider` | `Provider` interface and registry |
 | `provider/fake` | in-memory provider with fixture tickets |
 | `provider/jira` | Jira Cloud REST v3 client, field mapping, rich text to Markdown |
+| `provider/ado` | Azure DevOps REST client (read only), WIQL search, HTML to Markdown |
 | `profile` | TOML profile schema and loader |
 | `internal/ui` | tabs, table, board, context menu, ticket view, status bar |
 | `internal/arrange` | tickets of a queue grouped into buckets or lanes, shared by the interface and `tq order` |

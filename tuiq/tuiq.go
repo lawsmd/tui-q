@@ -19,6 +19,7 @@ import (
 	"github.com/lawsmd/tui-q/provider"
 
 	// Platforms available to every build.
+	_ "github.com/lawsmd/tui-q/provider/ado"
 	_ "github.com/lawsmd/tui-q/provider/fake"
 	_ "github.com/lawsmd/tui-q/provider/jira"
 )

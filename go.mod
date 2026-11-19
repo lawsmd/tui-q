@@ -12,6 +12,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.14.0
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/lawsmd/slate v0.0.0-20261120002553-97667a819d16
+	golang.org/x/net v0.39.0
 )
 
 require (
@@ -40,7 +41,6 @@ require (
 	github.com/xo/terminfo v1.0.0 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	github.com/yuin/goldmark-emoji v1.0.5 // indirect
-	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.24.0 // indirect

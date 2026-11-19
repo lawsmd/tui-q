@@ -38,7 +38,9 @@ instance first needs it.
 | `ext.View` | a custom top-level tab |
 
 Provider packages export their HTTP client so an instance action can call any endpoint.
-The Jira client has `Do` for JSON and `Raw` for files.
+The Jira client has `Do` for JSON and `Raw` for files. The Azure DevOps client has `Do`,
+and its provider exports `Query` (WIQL to IDs), `Read` (batch reads of chosen fields)
+and `ToTicket`, so an instance can build a queue of its own from them.
 
 ## Profile
 
@@ -46,6 +48,12 @@ The Jira client has `Do` for JSON and `Raw` for files.
   `default_project` names the project a bare ticket number is looked up in, on a
   platform whose ticket keys carry a project. `comment_kinds` lists the kinds of
   comment the comment box offers, the default first. Jira has `public` and `internal`.
+  For Azure DevOps (`kind = "ado"`), `base_url` is the organisation URL and
+  `default_project` the project every query runs in. With `token_env` set the provider
+  signs in with that personal access token; without it, with a token from
+  `az account get-access-token`, using the program in `AZURE_CLI_PATH` when that is set.
+  A queue's query is WIQL. The provider reads only: it lists no transitions and refuses
+  writes.
 - `[[queue]]`: name, query in the platform's own language, `layout` (`table` or `board`),
   columns or card fields, refresh interval. A board names the field its lanes group by.
   Dropping a card on a status lane runs a transition; on any other lane, a field edit.
@@ -171,7 +179,7 @@ The Jira client has `Do` for JSON and `Raw` for files.
 | 3 | Board layout, drag between lanes, context menu, sideways scrolling | done; a drop reports the move and changes nothing until phase 4 |
 | 4 | Writes: transitions with required-field forms, assignment, field edits | done against the fake provider and against recorded requests; not yet run against a live site |
 | 5 | `ext.Action` and the first instance-only action | done against the fake provider; the instance action is tested against a local stand-in for the site and not yet run against a live one |
-| 6 | Azure DevOps provider and a second instance; macOS and Linux run | |
+| 6 | Azure DevOps provider and a second instance; macOS and Linux run | provider (read only) done against `httptest`; writes, second instance, macOS and Linux run not yet |
 | 7 | Disk snapshots, timed refresh, themes, remaining extension points, docs | |
 
 Outside the phases: `tq order` prints the tickets of each queue in working order for an
