@@ -162,7 +162,7 @@ query = "status=Done"
 	send(t, m, tea.WindowSizeMsg{Width: 110, Height: 40})
 	drain(t, m, m.Init())
 	out := screen(m)
-	for _, want := range []string{"Open  1-3 of 5", "Done  1-2 of 2", "Work (7)", "Ready"} {
+	for _, want := range []string{"Open  1-3 of 5", "Done (2)", "Work (7)", "Ready"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("screen lacks %q\n%s", want, out)
 		}

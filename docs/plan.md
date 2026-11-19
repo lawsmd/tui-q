@@ -75,7 +75,8 @@ The Jira client has `Do` for JSON and `Raw` for files.
   in a narrower pane it is left out and `/` still opens it.
 - The heading of a bucket shown one page at a time gives the range on screen and the
   size of the bucket, such as `11-20 of 412`, and has a pair of arrows at its right end
-  that turn the page. A bucket with its own query loads the page as a read; any other
+  that turn the page. A bucket that fits on one page shows its size alone, such as
+  `Open (8)`. A bucket with its own query loads the page as a read; any other
   has its tickets already. The queue tab counts the whole bucket. After a write the
   page on screen is loaded again, and a page that is no longer there is answered with
   the first.

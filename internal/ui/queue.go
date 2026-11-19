@@ -164,10 +164,10 @@ func (q *queue) lines() []line {
 	}
 	var out []line
 	for j, members := range q.sections() {
-		head := line{ticket: -1, heading: fmt.Sprintf("Other  %d", len(members))}
+		head := line{ticket: -1, heading: fmt.Sprintf("Other (%d)", len(members))}
 		if j < len(q.cfg.Buckets) {
 			b := q.cfg.Buckets[j]
-			head.heading = fmt.Sprintf("%s  %d", b.Name, len(members))
+			head.heading = fmt.Sprintf("%s (%d)", b.Name, len(members))
 			if b.PageSize > 0 {
 				st := q.page(j)
 				total, more := st.total, st.more
@@ -181,8 +181,11 @@ func (q *queue) lines() []line {
 				}
 				first := st.page * b.PageSize
 				switch {
+				case st.page == 0 && !more:
+					// The bucket fits on one page: the heading gives its size.
+					head.heading = fmt.Sprintf("%s (%d)", b.Name, len(members))
 				case len(members) == 0:
-					head.heading = b.Name + "  0"
+					head.heading = b.Name + " (0)"
 				case total < 0:
 					head.heading = fmt.Sprintf("%s  %d-%d", b.Name, first+1, first+len(members))
 				default:

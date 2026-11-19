@@ -48,6 +48,15 @@ func TestBucketsAndTheSingleTabRow(t *testing.T) {
 
 	// Every ticket is listed once, under the heading of its bucket.
 	q := m.queues[0]
+	for j, members := range q.sections() {
+		name := "Other"
+		if j < len(q.cfg.Buckets) {
+			name = q.cfg.Buckets[j].Name
+		}
+		if want := fmt.Sprintf("%s (%d)", name, len(members)); !strings.Contains(screen(m), want) {
+			t.Errorf("screen lacks the heading %q", want)
+		}
+	}
 	section, seen := "", 0
 	for _, ln := range q.lines() {
 		if ln.ticket < 0 && ln.heading == "" {
