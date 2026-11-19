@@ -49,6 +49,8 @@ func fixtures() []ticket.Ticket {
 			},
 			Comments: []ticket.Comment{
 				{Author: "reporter", Created: now.Add(-time.Duration(len(rows)-i) * 20 * time.Hour), Body: "Still happening this morning."},
+				{Author: "sam", Created: now.Add(-time.Duration(len(rows)-i) * 12 * time.Hour), Body: "I can reproduce it on the **staging** site. Looking into it."},
+				{Author: "alex", Created: now.Add(-time.Duration(len(rows)-i) * 4 * time.Hour), Body: "A fix is in review:\n\n- one change to the handler\n- one new test"},
 			},
 		}
 		out = append(out, t)

@@ -29,6 +29,12 @@ func TestSettingsAreSavedAndReadBack(t *testing.T) {
 	if got := Open(path).View("Open"); got.Widths["status"] != 9 || len(got.Show) != 0 {
 		t.Fatalf("widths read back = %+v", got)
 	}
+	if err := s.SetCommentsOldestFirst(true); err != nil {
+		t.Fatal(err)
+	}
+	if !Open(path).CommentsOldestFirst {
+		t.Fatal("the comment order was not read back")
+	}
 	if err := s.SetColumn("assignee", Column{}); err != nil {
 		t.Fatal(err)
 	}

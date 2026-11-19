@@ -61,6 +61,8 @@ const (
 	idJump       = "jump"
 	idPagePrev   = "pageprev"
 	idPageNext   = "pagenext"
+	// idCommentOrder is the control that turns the order of comments round.
+	idCommentOrder = "commentorder"
 )
 
 // hitEvent is one mouse gesture.
@@ -737,6 +739,14 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 			t := m.tabs[m.activeTab].t
 			return m.copy(t.URL, "link to "+t.Key)
 		}
+	case idCommentOrder:
+		err := m.prefs.SetCommentsOldestFirst(!m.prefs.CommentsOldestFirst)
+		for _, tab := range m.tabs {
+			tab.main = nil
+		}
+		if err != nil {
+			m.notice = "The setting is on for now, but saving it failed: " + err.Error()
+		}
 	case idMove, idAssign, idField, idAction:
 		if m.activeTab < 0 {
 			return nil
@@ -759,7 +769,13 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 // scroll applies one wheel notch to whatever is under the pointer.
 func (m *Model) scroll(ev hit.Event) {
 	if m.activeTab >= 0 {
-		m.tabs[m.activeTab].offset += ev.DY * wheelStep
+		// Beside the main column the sidebar scrolls on its own.
+		tab := m.tabs[m.activeTab]
+		if tab.sideX > 0 && ev.X >= tab.sideX {
+			tab.sideOffset += ev.DY * wheelStep
+		} else {
+			tab.offset += ev.DY * wheelStep
+		}
 		return
 	}
 	q := m.queues[m.activeQueue]

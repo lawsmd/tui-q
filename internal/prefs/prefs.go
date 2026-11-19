@@ -36,6 +36,16 @@ type Store struct {
 	Views map[string]View `json:"views,omitempty"`
 	// DateOnly shows a date and time in a table as the date alone.
 	DateOnly bool `json:"date_only,omitempty"`
+	// CommentsOldestFirst lists the comments of a ticket from the oldest
+	// down. They are listed from the newest down without it.
+	CommentsOldestFirst bool `json:"comments_oldest_first,omitempty"`
+}
+
+// SetCommentsOldestFirst changes the CommentsOldestFirst setting and saves
+// the file.
+func (s *Store) SetCommentsOldestFirst(on bool) error {
+	s.CommentsOldestFirst = on
+	return s.save()
 }
 
 // SetDateOnly changes the DateOnly setting and saves the file.

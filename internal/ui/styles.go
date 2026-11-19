@@ -59,6 +59,14 @@ type Styles struct {
 	Label lipgloss.Style
 	Faint lipgloss.Style
 
+	// Rule is the line that divides the sections of a ticket, and Section
+	// the name set into it.
+	Rule    lipgloss.Style
+	Section lipgloss.Style
+	// CommentBorder frames one comment, and CommentAuthor names who wrote it.
+	CommentBorder lipgloss.Style
+	CommentAuthor lipgloss.Style
+
 	Status      lipgloss.Style
 	StatusBusy  lipgloss.Style
 	StatusError lipgloss.Style
@@ -120,6 +128,11 @@ func DefaultStyles() Styles {
 		Label: lipgloss.NewStyle().Foreground(accent),
 		Faint: lipgloss.NewStyle().Foreground(dim),
 
+		Rule:          lipgloss.NewStyle().Foreground(dim),
+		Section:       lipgloss.NewStyle().Foreground(accent).Bold(true),
+		CommentBorder: lipgloss.NewStyle().Foreground(dim),
+		CommentAuthor: lipgloss.NewStyle().Foreground(text).Bold(true),
+
 		Status:      lipgloss.NewStyle().Background(bar).Foreground(dim),
 		StatusBusy:  lipgloss.NewStyle().Background(bar).Foreground(warn),
 		StatusError: lipgloss.NewStyle().Background(bar).Foreground(bad),
@@ -170,11 +183,48 @@ func clamp(v, lo, hi int) int {
 // w-4 cells wide; the border and one cell of padding on each side make the
 // result w wide. Border draws the frame and the padding.
 func box(lines []string, w int, border lipgloss.Style) []string {
+	return titledBox("", lines, w, border)
+}
+
+// titledBox is box with a title set into the top border. The title may be
+// styled; it is cut when the border has no room for it.
+func titledBox(title string, lines []string, w int, border lipgloss.Style) []string {
 	rule := strings.Repeat("─", max(w-2, 0))
+	top := border.Render("╭" + rule + "╮")
+	if title = ruleTitle(title, w); title != "" {
+		rest := strings.Repeat("─", w-5-lipgloss.Width(title))
+		top = border.Render("╭─ ") + title + border.Render(" "+rest+"╮")
+	}
 	out := make([]string, 0, len(lines)+2)
-	out = append(out, border.Render("╭"+rule+"╮"))
+	out = append(out, top)
 	for _, line := range lines {
 		out = append(out, border.Render("│ ")+line+border.Render(" │"))
 	}
 	return append(out, border.Render("╰"+rule+"╯"))
+}
+
+// ruleIndent is how far into a rule or a titled border its title starts.
+const ruleIndent = 3
+
+// ruleTitle cuts a title to what a rule or a border w cells wide can hold:
+// the indent before it, and a space and one cell of line after it.
+func ruleTitle(title string, w int) string {
+	if w < ruleIndent+3 {
+		return ""
+	}
+	return ansi.Truncate(title, w-ruleIndent-2, "…")
+}
+
+// rule is a horizontal line w cells wide with the name of a section set
+// into it.
+func (s Styles) rule(title string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	title = ruleTitle(title, w)
+	if title == "" {
+		return s.Rule.Render(strings.Repeat("─", w))
+	}
+	rest := strings.Repeat("─", w-ruleIndent-1-lipgloss.Width(title))
+	return s.Rule.Render("── ") + s.Section.Render(title) + s.Rule.Render(" "+rest)
 }

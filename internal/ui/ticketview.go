@@ -1,9 +1,12 @@
 package ui
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lawsmd/tui-q/ticket"
 )
@@ -12,8 +15,10 @@ import (
 const (
 	sidebarWidth = 32
 	// The sidebar sits beside the main column at this width and above, and
-	// under it below.
+	// over it below.
 	sideBySideWidth = 90
+	// titleRows is the most lines the title is given.
+	titleRows = 3
 )
 
 // editMark follows the label of a field that can be clicked to change it.
@@ -25,8 +30,14 @@ type ticketTab struct {
 	// transitions are the moves open to the ticket, loaded with it.
 	transitions []ticket.Transition
 	loading     bool
-	// offset is the first line of the body drawn.
+	// offset is the first line drawn of the main column, or of the whole
+	// body when the sidebar is not beside it.
 	offset int
+	// sideOffset is the first line of the sidebar drawn when it is beside
+	// the main column, and sideX the screen column it started at in the
+	// last frame. sideX is 0 when the sidebar is not beside the main column.
+	sideOffset int
+	sideX      int
 
 	// main caches the rendered main column for one width, with the place
 	// of each clickable label in it. Rendering Markdown on every frame
@@ -40,10 +51,13 @@ type ticketTab struct {
 	fields []string
 }
 
-// labelLine is the label of an editable field and the line it is drawn on.
+// labelLine is something clickable in a column: the label of an editable
+// field, with the line it is drawn on and how far along the line it
+// starts. One with no name is the control for the order of the comments.
 type labelLine struct {
 	name string
 	line int
+	x    int
 	text string
 }
 
@@ -64,8 +78,11 @@ func (tab *ticketTab) shows(name string) bool {
 	return ok
 }
 
-// layers draws the ticket: a row of buttons, then the scrolling body with
-// a clickable layer over the label of each field that can be changed.
+// layers draws the ticket: a row of buttons, then the title, the main
+// column and the sidebar, with a clickable layer over the label of each
+// field that can be changed. In a wide pane the title and the sidebar stay
+// in place while the main column scrolls. In a narrow one the title, the
+// sidebar and the main column scroll as one column.
 func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 	s := m.styles
 	layers := []*lipgloss.Layer{}
@@ -98,64 +115,76 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 
 	body := area{x: a.x + 1, y: a.y + 2, w: a.w - 2, h: a.h - 2}
 	tab.fields = nil
+	tab.sideX = 0
 	if body.h <= 0 || body.w <= 0 {
 		return layers
 	}
 
-	// labels are the clickable labels, placed in the coordinates of lines.
-	type placed struct {
-		labelLine
-		x int
+	// column draws the lines of one scrolling column in the area c, from
+	// the line offset down, and puts a clickable layer over each label in
+	// view. It returns the offset, held to the lines there are.
+	column := func(c area, lines []string, labels []labelLine, offset int) int {
+		offset = clamp(offset, 0, len(lines)-c.h)
+		if c.h <= 0 || len(lines) == 0 {
+			return offset
+		}
+		end := min(offset+c.h, len(lines))
+		text := strings.Join(lines[offset:end], "\n")
+		layers = append(layers, lipgloss.NewLayer(text).X(c.x).Y(c.y).Z(zScenery))
+		for _, l := range labels {
+			row := l.line - offset
+			if row < 0 || row >= c.h {
+				continue
+			}
+			id := idCommentOrder
+			if l.name != "" {
+				id = layerID(idField, len(tab.fields))
+				tab.fields = append(tab.fields, l.name)
+			}
+			layers = append(layers, lipgloss.NewLayer(l.text).ID(id).X(c.x+l.x).Y(c.y+row).Z(zItem))
+		}
+		return offset
 	}
-	var lines []string
-	var labels []placed
-	if body.w >= sideBySideWidth {
-		mainW := body.w - sidebarWidth - 2
-		left, leftLabels := tab.mainLines(m, mainW)
-		right, rightLabels := tab.sidebarLines(m, sidebarWidth)
-		for i := 0; i < max(len(left), len(right)); i++ {
-			l, r := "", ""
-			if i < len(left) {
-				l = left[i]
-			}
-			if i < len(right) {
-				r = right[i]
-			}
-			lines = append(lines, pad(l, mainW)+"  "+r)
-		}
-		for _, l := range leftLabels {
-			labels = append(labels, placed{l, 0})
-		}
-		for _, l := range rightLabels {
-			labels = append(labels, placed{l, mainW + 2})
-		}
-	} else {
+
+	if body.w < sideBySideWidth {
+		lines := tab.titleLines(m, body.w)
+		var labels []labelLine
 		side, sideLabels := tab.sidebarLines(m, body.w)
 		main, mainLabels := tab.mainLines(m, body.w)
-		lines = append(append(append(lines, side...), ""), main...)
-		for _, l := range sideLabels {
-			labels = append(labels, placed{l, 0})
+		for _, part := range []struct {
+			lines  []string
+			labels []labelLine
+		}{{side, sideLabels}, {main, mainLabels}} {
+			for _, l := range part.labels {
+				l.line += len(lines)
+				labels = append(labels, l)
+			}
+			lines = append(lines, part.lines...)
 		}
-		for _, l := range mainLabels {
-			l.line += len(side) + 1
-			labels = append(labels, placed{l, 0})
-		}
+		tab.offset = column(body, lines, labels, tab.offset)
+		return layers
 	}
 
-	tab.offset = clamp(tab.offset, 0, len(lines)-body.h)
-	end := min(tab.offset+body.h, len(lines))
-	text := strings.Join(lines[tab.offset:end], "\n")
-	layers = append(layers, lipgloss.NewLayer(text).X(body.x).Y(body.y).Z(zScenery))
-
-	for _, l := range labels {
-		row := l.line - tab.offset
-		if row < 0 || row >= body.h {
-			continue
-		}
-		id := layerID(idField, len(tab.fields))
-		tab.fields = append(tab.fields, l.name)
-		layers = append(layers, lipgloss.NewLayer(l.text).ID(id).X(body.x+l.x).Y(body.y+row).Z(zItem))
+	head := tab.titleLines(m, body.w)
+	head = head[:min(len(head), body.h)]
+	if len(head) > 0 {
+		layers = append(layers, lipgloss.NewLayer(strings.Join(head, "\n")).X(body.x).Y(body.y).Z(zScenery))
 	}
+	rest := area{x: body.x, y: body.y + len(head), w: body.w, h: body.h - len(head)}
+	if rest.h <= 0 {
+		return layers
+	}
+	// The main column, a space, the dividing line, a space, the sidebar.
+	mainW := rest.w - sidebarWidth - 3
+	left, leftLabels := tab.mainLines(m, mainW)
+	tab.offset = column(area{rest.x, rest.y, mainW, rest.h}, left, leftLabels, tab.offset)
+
+	divider := strings.TrimSuffix(strings.Repeat(s.Rule.Render("│")+"\n", rest.h), "\n")
+	layers = append(layers, lipgloss.NewLayer(divider).X(rest.x+mainW+1).Y(rest.y).Z(zScenery))
+
+	tab.sideX = rest.x + mainW + 3
+	right, rightLabels := tab.sidebarLines(m, sidebarWidth)
+	tab.sideOffset = column(area{tab.sideX, rest.y, sidebarWidth, rest.h}, right, rightLabels, tab.sideOffset)
 	return layers
 }
 
@@ -177,62 +206,101 @@ func (tab *ticketTab) labelFor(m *Model, name string, w int) string {
 	return m.styles.Label.Render(fit(label, w))
 }
 
-// mainLines is the main column: the profile's main fields in order, then
-// the comments when the profile asks for them.
+// titleLines is the key and title of the ticket over one blank line, when
+// the profile puts the title in the main column. A title that wraps onto
+// more than titleRows lines is cut.
+func (tab *ticketTab) titleLines(m *Model, w int) []string {
+	if !slices.Contains(m.prof.Ticket.Main, ticket.FieldTitle) {
+		return nil
+	}
+	text := tab.t.Key + "  " + tab.t.Field(ticket.FieldTitle).String()
+	lines := strings.Split(lipgloss.Wrap(text, w, ""), "\n")
+	if len(lines) > titleRows {
+		last := strings.Join(lines[titleRows-1:], " ")
+		lines = append(lines[:titleRows-1], ansi.Truncate(last, w, "…"))
+	}
+	for i, line := range lines {
+		lines[i] = m.styles.Title.Render(line)
+	}
+	return append(lines, "")
+}
+
+// mainLines is the main column: the profile's main fields in order under a
+// rule each, then the comments when the profile asks for them. The title
+// is drawn by titleLines.
 func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 	if tab.main != nil && tab.mainWidth == w {
 		return tab.main, tab.mainLabels
 	}
 	s := m.styles
-	var lines []string
+	lines := []string{}
 	var labels []labelLine
 	add := func(text string) {
 		lines = append(lines, strings.Split(lipgloss.Wrap(text, w, ""), "\n")...)
 	}
 	for _, name := range m.prof.Ticket.Main {
-		if !tab.shows(name) {
+		if name == ticket.FieldTitle || !tab.shows(name) {
 			continue
 		}
 		value := tab.t.Field(name).String()
-		switch name {
-		case ticket.FieldTitle:
-			add(s.Title.Render(tab.t.Key + "  " + value))
-		case ticket.FieldBody:
-			if value == "" {
-				add(s.Faint.Render("(no description)"))
-			} else {
-				lines = append(lines, markdownLines(value, w)...)
-			}
-		default:
-			text := tab.labelFor(m, name, w)
-			if tab.editable(name) {
-				labels = append(labels, labelLine{name: name, line: len(lines), text: text})
-			}
-			lines = append(lines, text)
-			if value == "" {
-				add(s.Faint.Render("none"))
-			} else {
-				lines = append(lines, markdownLines(value, w)...)
-			}
+		label := m.label(name)
+		empty := "none"
+		if name == ticket.FieldBody {
+			empty = "(no description)"
+		} else if tab.editable(name) {
+			label += editMark
+			text := s.Section.Render(ruleTitle(label, w))
+			labels = append(labels, labelLine{name: name, line: len(lines), x: ruleIndent, text: text})
+		}
+		lines = append(lines, s.rule(label, w), "")
+		if value == "" {
+			add(s.Faint.Render(empty))
+		} else {
+			lines = append(lines, markdownLines(value, w)...)
 		}
 		lines = append(lines, "")
 	}
 	if m.prof.Ticket.Comments && len(tab.t.Comments) > 0 {
-		lines = append(lines, s.Label.Render("Comments"), "")
-		for _, c := range tab.t.Comments {
-			lines = append(lines, s.Faint.Render(c.Author+"  "+c.Created.Local().Format("2006-01-02 15:04")))
-			lines = append(lines, markdownLines(c.Body, w)...)
-			lines = append(lines, "")
+		oldestFirst := m.prefs.CommentsOldestFirst
+		comments := slices.Clone(tab.t.Comments)
+		slices.SortStableFunc(comments, func(a, b ticket.Comment) int {
+			if oldestFirst {
+				return a.Created.Compare(b.Created)
+			}
+			return b.Created.Compare(a.Created)
+		})
+
+		heading := fmt.Sprintf("Comments (%d)", len(comments))
+		// The control for the order sits at the right end of the rule,
+		// when the rule has room for it after the heading.
+		control := " newest first" + editMark + " "
+		if oldestFirst {
+			control = " oldest first" + editMark + " "
+		}
+		if x := w - lipgloss.Width(control) - 2; x >= ruleIndent+lipgloss.Width(heading)+2 {
+			labels = append(labels, labelLine{line: len(lines), x: x, text: s.Label.Render(control)})
+		}
+		lines = append(lines, s.rule(heading, w), "")
+
+		for _, c := range comments {
+			title := s.CommentAuthor.Render(c.Author) +
+				s.Faint.Render(" · "+c.Created.Local().Format("2006-01-02 15:04"))
+			text := unindent(markdownLines(c.Body, w-4+markdownMargin), markdownMargin)
+			for i, line := range text {
+				text[i] = pad(line, w-4)
+			}
+			lines = append(lines, titledBox(title, text, w, s.CommentBorder)...)
 		}
 	}
 	tab.main, tab.mainLabels, tab.mainWidth = lines, labels, w
 	return lines, labels
 }
 
-// sidebarLines is the profile's sidebar fields, a label over each value.
+// sidebarLines is the profile's sidebar fields under a rule, a label over
+// each value.
 func (tab *ticketTab) sidebarLines(m *Model, w int) ([]string, []labelLine) {
 	s := m.styles
-	var lines []string
+	lines := []string{s.rule("Details", w), ""}
 	var labels []labelLine
 	for _, name := range m.prof.Ticket.Sidebar {
 		if !tab.shows(name) {

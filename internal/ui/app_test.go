@@ -191,6 +191,9 @@ func TestFrameMatchesPaneAtEverySize(t *testing.T) {
 	m := newModel(t, 110, 30)
 	clickLayer(t, m, layerID(idRow, 0))
 	checkFrames(t, m, "ticket")
+	clickLayer(t, m, idCommentOrder)
+	m.tabs[0].offset, m.tabs[0].sideOffset = 1000, 1000
+	checkFrames(t, m, "ticket scrolled to the end")
 	m.activeTab = -1
 	checkFrames(t, m, "table")
 
@@ -201,6 +204,67 @@ func TestFrameMatchesPaneAtEverySize(t *testing.T) {
 	m.menu = nil
 	m.drag = &drag{index: 0, x: 159, y: 39}
 	checkFrames(t, m, "drag")
+}
+
+func TestCommentsAreNewestFirstUntilToggled(t *testing.T) {
+	m := newModel(t, 110, 60)
+	clickLayer(t, m, layerID(idRow, 1))
+	order := func() (newest, oldest int) {
+		out := screen(m)
+		newest, oldest = strings.Index(out, "A fix is in review"), strings.Index(out, "Still happening")
+		if newest < 0 || oldest < 0 {
+			t.Fatalf("comments not both on screen\n%s", out)
+		}
+		return newest, oldest
+	}
+	if newest, oldest := order(); newest > oldest {
+		t.Fatalf("the oldest comment is first by default\n%s", screen(m))
+	}
+	if out := screen(m); !strings.Contains(out, "Comments (3)") || !strings.Contains(out, "newest first") {
+		t.Fatalf("no count or order on the comments rule\n%s", out)
+	}
+
+	clickLayer(t, m, idCommentOrder)
+	if !m.prefs.CommentsOldestFirst {
+		t.Fatal("the click did not change the setting")
+	}
+	if newest, oldest := order(); newest < oldest {
+		t.Fatalf("the newest comment is still first\n%s", screen(m))
+	}
+	if !strings.Contains(screen(m), "oldest first") {
+		t.Error("the control does not name the new order")
+	}
+}
+
+func TestSidebarStaysWhileMainScrolls(t *testing.T) {
+	m := newModel(t, 110, 14)
+	clickLayer(t, m, layerID(idRow, 1))
+	m.View()
+	tab := m.tabs[0]
+	if tab.sideX == 0 {
+		t.Fatal("the sidebar is not beside the main column at 110 wide")
+	}
+	for i := 0; i < 30; i++ {
+		send(t, m, tea.MouseWheelMsg{X: 5, Y: 8, Button: tea.MouseWheelDown})
+		m.View()
+	}
+	out := screen(m)
+	if tab.offset == 0 || tab.sideOffset != 0 {
+		t.Fatalf("offset=%d sideOffset=%d after scrolling the main column", tab.offset, tab.sideOffset)
+	}
+	for _, want := range []string{"DEMO-102", "Details", "Status", "Still happening"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("scrolled ticket lacks %q\n%s", want, out)
+		}
+	}
+
+	// The wheel over the sidebar moves the sidebar alone.
+	main := tab.offset
+	send(t, m, tea.MouseWheelMsg{X: tab.sideX + 2, Y: 8, Button: tea.MouseWheelDown})
+	m.View()
+	if tab.offset != main || tab.sideOffset == 0 {
+		t.Fatalf("offset=%d (was %d) sideOffset=%d after scrolling the sidebar", tab.offset, main, tab.sideOffset)
+	}
 }
 
 func TestBoardGroupsTicketsIntoLanes(t *testing.T) {
