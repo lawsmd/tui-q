@@ -71,6 +71,12 @@ type Ticket struct {
 	Updated  time.Time
 
 	// Body is the description, converted to Markdown by the provider.
+	//
+	// Code is written as a fenced block, one block for each region of code
+	// on the platform, with its lines separated by single newlines and the
+	// platform's name for the language after the opening fence when it
+	// gives one. provider.Fence writes that form. The ticket view draws a
+	// fenced block as a code block and colours it by language.
 	Body string
 
 	// Fields holds everything else, keyed by the field name the profile uses.
@@ -132,7 +138,8 @@ type Option struct {
 type Comment struct {
 	Author  string
 	Created time.Time
-	Body    string
+	// Body is Markdown, in the form Ticket.Body describes.
+	Body string
 }
 
 // Field returns the named field as a Value. Built-in names read the struct;

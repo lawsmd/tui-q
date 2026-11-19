@@ -204,6 +204,67 @@ func TestFrameMatchesPaneAtEverySize(t *testing.T) {
 	m.menu = nil
 	m.drag = &drag{index: 0, x: 159, y: 39}
 	checkFrames(t, m, "drag")
+	m.drag = nil
+	m.tabDrag = &tabDrag{}
+	checkFrames(t, m, "tab drag")
+}
+
+func TestDraggedTabChangesPlaces(t *testing.T) {
+	m := newModel(t, 110, 30)
+	for i := 0; i < 3; i++ {
+		clickLayer(t, m, layerID(idRow, i))
+		clickLayer(t, m, layerID(idQueueTab, 0))
+	}
+	keys := func() string {
+		var out []string
+		for _, tab := range m.tabs {
+			out = append(out, tab.t.Key)
+		}
+		return strings.Join(out, " ")
+	}
+	a, b, c := m.tabs[0].t.Key, m.tabs[1].t.Key, m.tabs[2].t.Key
+
+	// The tabs are apart on the row: a cell of the row shows between them.
+	m.View()
+	first, second := m.tabSpans[0], m.tabSpans[1]
+	if second.x != first.x+first.w+tabGap {
+		t.Fatalf("tabs at %+v and %+v, want a gap of %d", first, second, tabGap)
+	}
+
+	// Drag the first tab to the far end of the last, with two movements
+	// between frames.
+	last := m.tabSpans[2]
+	y := m.comp.GetLayer(layerID(idTicketTab, 0)).GetY()
+	send(t, m, tea.MouseClickMsg{X: first.x + 1, Y: y, Button: tea.MouseLeft})
+	send(t, m, tea.MouseMotionMsg{X: second.x + second.w - 1, Y: y, Button: tea.MouseLeft})
+	send(t, m, tea.MouseMotionMsg{X: last.x + last.w - 1, Y: y + 5, Button: tea.MouseLeft})
+	if got, want := keys(), b+" "+c+" "+a; got != want {
+		t.Fatalf("tabs during the drag: %s, want %s", got, want)
+	}
+	if m.activeTab != 2 {
+		t.Fatalf("activeTab=%d, want the dragged tab on show", m.activeTab)
+	}
+	// Staying put must not move it again.
+	m.View()
+	send(t, m, tea.MouseMotionMsg{X: last.x + last.w - 2, Y: y, Button: tea.MouseLeft})
+	if got, want := keys(), b+" "+c+" "+a; got != want {
+		t.Fatalf("tabs after a small movement: %s, want %s", got, want)
+	}
+
+	// Esc puts the tab back.
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got, want := keys(), a+" "+b+" "+c; got != want || m.tabDrag != nil || m.activeTab != 0 {
+		t.Fatalf("after esc: %s, activeTab=%d", got, m.activeTab)
+	}
+
+	// A drag that ends with a release keeps the new order.
+	m.View()
+	send(t, m, tea.MouseClickMsg{X: last.x + 1, Y: y, Button: tea.MouseLeft})
+	send(t, m, tea.MouseMotionMsg{X: first.x, Y: y, Button: tea.MouseLeft})
+	send(t, m, tea.MouseReleaseMsg{X: first.x, Y: y, Button: tea.MouseLeft})
+	if got, want := keys(), c+" "+a+" "+b; got != want || m.tabDrag != nil {
+		t.Fatalf("after the drop: %s, want %s", got, want)
+	}
 }
 
 func TestCommentsAreNewestFirstUntilToggled(t *testing.T) {

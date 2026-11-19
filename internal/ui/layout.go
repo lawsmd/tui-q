@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 
 	"charm.land/lipgloss/v2"
 
@@ -42,11 +43,11 @@ func (m *Model) compose() *lipgloss.Compositor {
 	root.AddLayers(queueTabs...)
 	top := 1
 	if len(m.queues) == 1 {
-		root.AddLayers(m.ticketTabs(end, 0, limit)...)
+		root.AddLayers(m.ticketTabs(end+tabGap, 0, limit)...)
 	} else {
 		top = 2
 		root.AddLayers(lipgloss.NewLayer(m.styles.SubTabRow.Render(blank(w, 1))).Y(1).Z(zScenery))
-		root.AddLayers(m.ticketTabs(0, 1, w)...)
+		root.AddLayers(m.ticketTabs(tabGap, 1, w)...)
 	}
 
 	// One blank line sets the tab rows off from what is under them.
@@ -130,28 +131,120 @@ func (m *Model) queueTabRow(w int) (row []*lipgloss.Layer, end, limit int) {
 
 // ticketTabs is one closable tab per open ticket, drawn on row y from x
 // up to limit.
+//
+// Each tab is a block of its own colour with one cell of the row showing
+// between it and the next. The tab on show takes the accent colour, and a
+// tab being dragged the colour of a carried card. The place of each tab is
+// kept in m.tabSpans for the drag that reorders them.
 func (m *Model) ticketTabs(x, y, limit int) []*lipgloss.Layer {
 	s := m.styles
 	var layers []*lipgloss.Layer
-	w := limit
+	m.tabSpans = m.tabSpans[:0]
 	for i, tab := range m.tabs {
-		style := s.SubTab
-		if i == m.activeTab {
+		style, closeStyle := s.SubTab, s.SubTabClose
+		switch {
+		case m.tabDrag != nil && i == m.tabDrag.index:
+			style = s.SubTabDrag
+			closeStyle = style.Padding(0)
+		case i == m.activeTab:
 			style = s.SubTabActive
+			closeStyle = style.Padding(0)
 		}
 		label := style.Render(tab.t.Key)
-		closer := s.SubTabClose.Render("x ")
+		closer := closeStyle.Render("x ")
 		lw, cw := lipgloss.Width(label), lipgloss.Width(closer)
-		if x+lw+cw > w {
+		if x+lw+cw > limit {
 			break
 		}
 		layers = append(layers,
 			lipgloss.NewLayer(label).ID(layerID(idTicketTab, i)).X(x).Y(y).Z(zItem),
 			lipgloss.NewLayer(closer).ID(layerID(idTabClose, i)).X(x+lw).Y(y).Z(zItem),
 		)
-		x += lw + cw
+		m.tabSpans = append(m.tabSpans, span{x: x, w: lw + cw})
+		x += lw + cw + tabGap
 	}
 	return layers
+}
+
+// tabGap is the room between two ticket tabs.
+const tabGap = 1
+
+// span is the cells a ticket tab takes on its row.
+type span struct{ x, w int }
+
+// tabDrag is a ticket tab being dragged along its row.
+type tabDrag struct {
+	// index is where the tab is now, and from where it was picked up.
+	index, from int
+}
+
+// moved returns s with the item at from put at to.
+func moved[T any](s []T, from, to int) []T {
+	item := s[from]
+	s = slices.Delete(s, from, from+1)
+	return slices.Insert(s, to, item)
+}
+
+// moveTab puts the tab at from in place to. The ticket on show stays on show.
+func (m *Model) moveTab(from, to int) {
+	if from == to || from < 0 || to < 0 || from >= len(m.tabs) || to >= len(m.tabs) {
+		return
+	}
+	var shown *ticketTab
+	if m.activeTab >= 0 {
+		shown = m.tabs[m.activeTab]
+	}
+	m.tabs = moved(m.tabs, from, to)
+	m.activeTab = slices.Index(m.tabs, shown)
+}
+
+// startTabDrag picks up ticket tab n and shows its ticket.
+func (m *Model) startTabDrag(n int) {
+	if n < 0 || n >= len(m.tabs) {
+		return
+	}
+	m.notice = ""
+	m.activeTab = n
+	m.tabDrag = &tabDrag{index: n, from: n}
+}
+
+// dragTabTo moves the dragged tab for a pointer at column x. The tab takes
+// the place of the tab under the pointer, but only once it would itself be
+// under the pointer afterwards. Without that rule a narrow tab dragged onto
+// a wide one would change places with it again on every movement.
+func (m *Model) dragTabTo(x int) {
+	d := m.tabDrag
+	if d.index >= len(m.tabSpans) {
+		return
+	}
+	own := m.tabSpans[d.index]
+	for j, sp := range m.tabSpans {
+		if j == d.index || x < sp.x || x >= sp.x+sp.w {
+			continue
+		}
+		if (j > d.index && x >= sp.x+sp.w-own.w) || (j < d.index && x < sp.x+own.w) {
+			m.moveTab(d.index, j)
+			// More movement may arrive before the next frame is drawn, so
+			// the places are worked out again here.
+			at := m.tabSpans[0].x
+			m.tabSpans = moved(m.tabSpans, d.index, j)
+			for k := range m.tabSpans {
+				m.tabSpans[k].x = at
+				at += m.tabSpans[k].w + tabGap
+			}
+			d.index = j
+		}
+		return
+	}
+}
+
+// cancelTabDrag ends the drag and puts the tab back where it was picked up.
+func (m *Model) cancelTabDrag() {
+	if m.tabDrag == nil {
+		return
+	}
+	m.moveTab(m.tabDrag.index, m.tabDrag.from)
+	m.tabDrag = nil
 }
 
 // statusBar is the last row. It shows the running operation, or the last

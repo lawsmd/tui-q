@@ -38,12 +38,35 @@ func unindent(lines []string, n int) []string {
 // slow next to using it, and a pane has few widths in a session.
 var renderers = map[int]*glamour.TermRenderer{}
 
-// markdownLines renders Markdown to styled lines no wider than w. When
-// glamour fails the text is returned unstyled.
-func markdownLines(text string, w int) []string {
+// markdownLines renders Markdown to styled lines no wider than w. Fenced
+// code blocks are drawn by codeBlockLines and the rest by glamour, with a
+// blank line between the two.
+func (s Styles) markdownLines(text string, w int) []string {
 	if w < 1 {
 		return nil
 	}
+	var lines []string
+	for _, seg := range splitFences(text) {
+		var part []string
+		if seg.code {
+			part = s.codeBlockLines(seg.text, seg.lang, w, markdownMargin)
+		} else {
+			part = proseLines(seg.text, w)
+		}
+		if len(part) == 0 {
+			continue
+		}
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, part...)
+	}
+	return lines
+}
+
+// proseLines renders Markdown with glamour to lines no wider than w. When
+// glamour fails the text is returned unstyled.
+func proseLines(text string, w int) []string {
 	r, ok := renderers[w]
 	if !ok {
 		var err error
@@ -67,7 +90,7 @@ func markdownLines(text string, w int) []string {
 	for len(lines) > 0 && strings.TrimSpace(ansi.Strip(lines[len(lines)-1])) == "" {
 		lines = lines[:len(lines)-1]
 	}
-	// Code blocks and tables are not wrapped, so cut what runs over.
+	// Tables and nested code blocks are not wrapped, so cut what runs over.
 	for i, line := range lines {
 		lines[i] = ansi.Truncate(line, w, "")
 	}

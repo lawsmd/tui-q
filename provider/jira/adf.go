@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/lawsmd/tui-q/provider"
 )
 
 // node is one node of an Atlassian Document Format tree.
@@ -88,7 +90,7 @@ func block(n node) string {
 		return list(n.Content, func(int) string { return "- " })
 	case "codeBlock":
 		lang, _ := n.Attrs["language"].(string)
-		return "```" + lang + "\n" + plain(n.Content) + "\n```"
+		return provider.Fence(plain(n.Content), lang)
 	case "blockquote":
 		return blocks(n.Content, "> ")
 	case "panel":

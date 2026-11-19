@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -19,9 +20,13 @@ type Styles struct {
 	Jump     lipgloss.Style
 	JumpHint lipgloss.Style
 
+	// SubTab is the tab of an open ticket, SubTabActive the tab of the ticket
+	// on show, and SubTabDrag a tab being dragged to a new place. SubTabClose
+	// is the close button of a SubTab; the other two draw their own.
 	SubTabRow    lipgloss.Style
 	SubTab       lipgloss.Style
 	SubTabActive lipgloss.Style
+	SubTabDrag   lipgloss.Style
 	SubTabClose  lipgloss.Style
 
 	Header lipgloss.Style
@@ -64,8 +69,25 @@ type Styles struct {
 	Rule    lipgloss.Style
 	Section lipgloss.Style
 	// CommentBorder frames one comment, and CommentAuthor names who wrote it.
+	// Both are drawn in the commenter's colour when Commenters has one.
 	CommentBorder lipgloss.Style
 	CommentAuthor lipgloss.Style
+	// Commenters are the colours given to the people who commented on a
+	// ticket, in the order they first commented. The colours are used again
+	// from the start when a ticket has more commenters than colours.
+	Commenters []color.Color
+
+	// Code is the text of a code block, CodeBar the bar down its left edge
+	// and CodeLabel the name of its language. The rest colour its tokens.
+	Code         lipgloss.Style
+	CodeBar      lipgloss.Style
+	CodeLabel    lipgloss.Style
+	CodeKeyword  lipgloss.Style
+	CodeString   lipgloss.Style
+	CodeNumber   lipgloss.Style
+	CodeComment  lipgloss.Style
+	CodeName     lipgloss.Style
+	CodeOperator lipgloss.Style
 
 	Status      lipgloss.Style
 	StatusBusy  lipgloss.Style
@@ -85,8 +107,14 @@ func DefaultStyles() Styles {
 		bad     = lipgloss.Color("#f7768e")
 		zebra   = lipgloss.Color("#1e2030")
 		band    = lipgloss.Color("#394b70")
+		chip    = lipgloss.Color("#3b4261")
 		bright  = lipgloss.Color("#e6ebff")
+		purple  = lipgloss.Color("#bb9af7")
+		green   = lipgloss.Color("#9ece6a")
+		orange  = lipgloss.Color("#ff9e64")
+		cyan    = lipgloss.Color("#89ddff")
 	)
+	code := lipgloss.NewStyle().Background(zebra)
 	return Styles{
 		TabRow:    lipgloss.NewStyle().Background(bar),
 		Tab:       lipgloss.NewStyle().Background(bar).Foreground(dim).Padding(0, 2),
@@ -97,9 +125,10 @@ func DefaultStyles() Styles {
 		JumpHint: lipgloss.NewStyle().Background(barAlt).Foreground(dim),
 
 		SubTabRow:    lipgloss.NewStyle().Background(barAlt),
-		SubTab:       lipgloss.NewStyle().Background(barAlt).Foreground(dim).Padding(0, 1),
-		SubTabActive: lipgloss.NewStyle().Background(barAlt).Foreground(text).Bold(true).Underline(true).Padding(0, 1),
-		SubTabClose:  lipgloss.NewStyle().Background(barAlt).Foreground(bad),
+		SubTab:       lipgloss.NewStyle().Background(chip).Foreground(text).Padding(0, 1),
+		SubTabActive: lipgloss.NewStyle().Background(accent).Foreground(onLight).Bold(true).Padding(0, 1),
+		SubTabDrag:   lipgloss.NewStyle().Background(warn).Foreground(onLight).Bold(true).Padding(0, 1),
+		SubTabClose:  lipgloss.NewStyle().Background(chip).Foreground(bad),
 
 		Header: lipgloss.NewStyle().Foreground(accent).Bold(true),
 		Row:    lipgloss.NewStyle().Foreground(text),
@@ -132,6 +161,33 @@ func DefaultStyles() Styles {
 		Section:       lipgloss.NewStyle().Foreground(accent).Bold(true),
 		CommentBorder: lipgloss.NewStyle().Foreground(dim),
 		CommentAuthor: lipgloss.NewStyle().Foreground(text).Bold(true),
+		// Pastels in colour-wheel order of rank: the primaries, then the
+		// secondaries, then the tertiaries, each tertiary placed away from
+		// the one before it.
+		Commenters: []color.Color{
+			lipgloss.Color("#f59e9e"), // red
+			lipgloss.Color("#f2e49b"), // yellow
+			lipgloss.Color("#9ebcf5"), // blue
+			lipgloss.Color("#a3e4ae"), // green
+			lipgloss.Color("#f5c49e"), // orange
+			lipgloss.Color("#c9a5f2"), // purple
+			lipgloss.Color("#9be8e1"), // blue-green
+			lipgloss.Color("#f2a5d8"), // red-violet
+			lipgloss.Color("#d3ec9b"), // yellow-green
+			lipgloss.Color("#a9a5f5"), // blue-violet
+			lipgloss.Color("#f5d79e"), // yellow-orange
+			lipgloss.Color("#f5b09e"), // red-orange
+		},
+
+		Code:         code.Foreground(text),
+		CodeBar:      code.Foreground(accent),
+		CodeLabel:    code.Foreground(dim),
+		CodeKeyword:  code.Foreground(purple),
+		CodeString:   code.Foreground(green),
+		CodeNumber:   code.Foreground(orange),
+		CodeComment:  code.Foreground(dim),
+		CodeName:     code.Foreground(accent),
+		CodeOperator: code.Foreground(cyan),
 
 		Status:      lipgloss.NewStyle().Background(bar).Foreground(dim),
 		StatusBusy:  lipgloss.NewStyle().Background(bar).Foreground(warn),

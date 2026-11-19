@@ -43,13 +43,17 @@ func fixtures() []ticket.Ticket {
 			Updated:  now.Add(-time.Duration(len(rows)-i) * 3 * time.Hour),
 			Body: "## What happened\n\n" + r.title + ".\n\n" +
 				"## Steps to reproduce\n\n1. Sign in as a normal user.\n2. Repeat the action from the report.\n3. Compare with the expected result.\n\n" +
-				"## Notes\n\nThis ticket is **fixture data** from the `fake` provider.",
+				"## Notes\n\nThis ticket is **fixture data** from the `fake` provider.\n\n" +
+				"```\nPOST /session 500\nrequest_id=demo-7f3a\n```",
 			Fields: map[string]ticket.Value{
 				"labels": ticket.List(r.labels...),
 			},
 			Comments: []ticket.Comment{
 				{Author: "reporter", Created: now.Add(-time.Duration(len(rows)-i) * 20 * time.Hour), Body: "Still happening this morning."},
-				{Author: "sam", Created: now.Add(-time.Duration(len(rows)-i) * 12 * time.Hour), Body: "I can reproduce it on the **staging** site. Looking into it."},
+				{Author: "sam", Created: now.Add(-time.Duration(len(rows)-i) * 12 * time.Hour), Body: "I can reproduce it on the **staging** site. Looking into it.\n\n" +
+					"```sql\nSELECT id, name, expires_at\nFROM license\n" +
+					"WHERE expires_at::date <> (expires_at AT TIME ZONE 'UTC')::date -- rows whose day changes when the stored time is read in another zone, which is every row saved late in the evening\n" +
+					"ORDER BY 1 LIMIT 20;\n```"},
 				{Author: "alex", Created: now.Add(-time.Duration(len(rows)-i) * 4 * time.Hour), Body: "A fix is in review:\n\n- one change to the handler\n- one new test"},
 			},
 		}

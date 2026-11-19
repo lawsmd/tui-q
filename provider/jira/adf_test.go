@@ -72,6 +72,10 @@ func TestADFToMarkdown(t *testing.T) {
 			]}]}`,
 			"| A | B |\n| --- | --- |\n| 1 | 2\\|3 |",
 		},
+		{"code block holding a fence",
+			`{"type":"doc","content":[{"type":"codeBlock","content":[
+				{"type":"text","text":"a\n` + "```" + `\nb"}]}]}`,
+			"````\na\n```\nb\n````"},
 		{"null", `null`, ""},
 		{"empty", ``, ""},
 	}

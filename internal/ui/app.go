@@ -146,6 +146,10 @@ type Model struct {
 	drag *drag
 	// resize is the column edge being dragged, or nil.
 	resize *resize
+	// tabDrag is the ticket tab being dragged, or nil, and tabSpans where
+	// the last frame drew each ticket tab.
+	tabDrag  *tabDrag
+	tabSpans []span
 	// jump is the box on the top row that takes a ticket number, key or
 	// link, and jumping says it has the keyboard.
 	jump    textinput.Model
@@ -353,6 +357,7 @@ func (m *Model) closeTab(i int) {
 	if i < 0 || i >= len(m.tabs) {
 		return
 	}
+	m.tabDrag = nil
 	m.tabs = append(m.tabs[:i], m.tabs[i+1:]...)
 	switch {
 	case m.activeTab == i:
@@ -502,6 +507,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.ops.Locked() {
 			m.mouse.Cancel()
 			m.drag = nil
+			m.tabDrag = nil
 			m.cancelResize()
 			return m, nil
 		}
@@ -579,6 +585,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		case m.resize != nil:
 			m.cancelResize()
 			m.mouse.Cancel()
+		case m.tabDrag != nil:
+			m.cancelTabDrag()
+			m.mouse.Cancel()
 		default:
 			m.activeTab = -1
 		}
@@ -638,6 +647,9 @@ func (m *Model) gesture(ev hit.Event) tea.Cmd {
 		if m.resize != nil {
 			m.resizeTo(ev.X)
 		}
+		if m.tabDrag != nil {
+			m.dragTabTo(ev.X)
+		}
 		if m.drag != nil {
 			m.drag.x, m.drag.y = ev.X, ev.Y
 			m.drag.over = m.queues[m.activeQueue].laneName(ev.Over)
@@ -645,6 +657,10 @@ func (m *Model) gesture(ev hit.Event) tea.Cmd {
 	case hit.Drop:
 		if m.resize != nil {
 			return m.endResize()
+		}
+		if m.tabDrag != nil {
+			m.tabDrag = nil
+			return nil
 		}
 		return m.drop(ev)
 	}
@@ -793,10 +809,14 @@ func (m *Model) scroll(ev hit.Event) {
 	}
 }
 
-// startDrag picks up a card or the edge of a table column. A drag that
-// starts anywhere else is ignored.
+// startDrag picks up a card, a ticket tab or the edge of a table column. A
+// drag that starts anywhere else is ignored.
 func (m *Model) startDrag(ev hit.Event) {
 	kind, n := splitID(ev.ID)
+	if kind == idTicketTab {
+		m.startTabDrag(n)
+		return
+	}
 	if kind == idEdge && m.activeTab < 0 {
 		m.startResize(ev.X, n)
 		return

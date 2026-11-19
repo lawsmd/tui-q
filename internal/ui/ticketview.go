@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"slices"
 	"strings"
 
@@ -256,7 +257,7 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 		if value == "" {
 			add(s.Faint.Render(empty))
 		} else {
-			lines = append(lines, markdownLines(value, w)...)
+			lines = append(lines, s.markdownLines(value, w)...)
 		}
 		lines = append(lines, "")
 	}
@@ -282,18 +283,45 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 		}
 		lines = append(lines, s.rule(heading, w), "")
 
+		colours := commenterColours(tab.t.Comments, s.Commenters)
 		for _, c := range comments {
-			title := s.CommentAuthor.Render(c.Author) +
+			author, border := s.CommentAuthor, s.CommentBorder
+			if colour, ok := colours[c.Author]; ok {
+				author, border = author.Foreground(colour), border.Foreground(colour)
+			}
+			title := author.Render(c.Author) +
 				s.Faint.Render(" · "+c.Created.Local().Format("2006-01-02 15:04"))
-			text := unindent(markdownLines(c.Body, w-4+markdownMargin), markdownMargin)
+			text := unindent(s.markdownLines(c.Body, w-4+markdownMargin), markdownMargin)
 			for i, line := range text {
 				text[i] = pad(line, w-4)
 			}
-			lines = append(lines, titledBox(title, text, w, s.CommentBorder)...)
+			lines = append(lines, titledBox(title, text, w, border)...)
 		}
 	}
 	tab.main, tab.mainLabels, tab.mainWidth = lines, labels, w
 	return lines, labels
+}
+
+// commenterColours gives each author in comments a colour from palette. The
+// author of the oldest comment gets the first colour, the next new author
+// the second, and the palette is used again from the start when the authors
+// outnumber it. An author keeps one colour whichever way the comments are
+// shown. The map is empty when the palette is.
+func commenterColours(comments []ticket.Comment, palette []color.Color) map[string]color.Color {
+	colours := map[string]color.Color{}
+	if len(palette) == 0 {
+		return colours
+	}
+	byAge := slices.Clone(comments)
+	slices.SortStableFunc(byAge, func(a, b ticket.Comment) int {
+		return a.Created.Compare(b.Created)
+	})
+	for _, c := range byAge {
+		if _, ok := colours[c.Author]; !ok {
+			colours[c.Author] = palette[len(colours)%len(palette)]
+		}
+	}
+	return colours
 }
 
 // sidebarLines is the profile's sidebar fields under a rule, a label over
