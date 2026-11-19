@@ -134,6 +134,10 @@ The Jira client has `Do` for JSON and `Raw` for files.
 | 6 | Azure DevOps provider and a second instance; macOS and Linux run | |
 | 7 | Disk snapshots, timed refresh, themes, remaining extension points, docs | |
 
+Outside the phases: `tq order` prints the tickets of each queue in working order for an
+LLM agent, as key, status and title. It shares the bucket and lane grouping with the
+interface through `internal/arrange`.
+
 ## Verification
 
 - `go test ./...`: providers against `httptest` servers with invented fixtures; UI tests

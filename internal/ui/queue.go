@@ -2,12 +2,12 @@ package ui
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/lawsmd/tui-q/internal/arrange"
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/ticket"
 )
@@ -57,7 +57,7 @@ type queue struct {
 }
 
 // fromQueue marks a ticket that the queue's own query returned.
-const fromQueue = -1
+const fromQueue = arrange.FromQueue
 
 // bucketPage is which page of a bucket is shown. For a bucket with its
 // own query it also holds what the platform said about that page.
@@ -129,26 +129,7 @@ type line struct {
 // ticket loaded by a bucket's own query is in that bucket, and any other
 // goes in the first bucket whose values it matches.
 func (q *queue) sections() [][]int {
-	sections := make([][]int, len(q.cfg.Buckets)+1)
-	for i, t := range q.tickets {
-		at := len(q.cfg.Buckets)
-		if src := q.source(i); src != fromQueue {
-			at = src
-		} else {
-			for j, b := range q.cfg.Buckets {
-				if b.Query != "" {
-					continue
-				}
-				value := t.Field(b.Field).String()
-				if slices.ContainsFunc(b.Values, func(v string) bool { return strings.EqualFold(v, value) }) {
-					at = j
-					break
-				}
-			}
-		}
-		sections[at] = append(sections[at], i)
-	}
-	return sections
+	return arrange.Sections(q.cfg, q.tickets, q.from)
 }
 
 // lines lists the lines of a table from top to bottom. A table with

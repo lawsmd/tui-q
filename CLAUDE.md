@@ -53,6 +53,7 @@ into this repository.
 | `provider/jira` | Jira Cloud REST v3 client, field mapping, rich text to Markdown |
 | `profile` | TOML profile schema and loader |
 | `internal/ui` | tabs, table, board, context menu, ticket view, status bar |
+| `internal/arrange` | tickets of a queue grouped into buckets or lanes, shared by the interface and `tq order` |
 | `internal/hit` | mouse messages to gestures on layer IDs |
 | `internal/ops` | operation runner behind the status bar |
 | `internal/prefs` | settings changed from inside the interface, saved per site |
@@ -73,12 +74,16 @@ into this repository.
 - An instance action runs through `Model.doAction`, which locks input and shows the
   steps the action reports. The core never learns what an action does.
 - A profile never holds a secret. It names the environment variables that do.
+- `tq order` tells an LLM agent the order to work in. It prints key, status and title for
+  each ticket. Do not add other fields, full ticket loads or writes to it: the agent reads
+  and changes tickets through its own access to the platform.
 
 ## Commands
 
 ```
 go run ./cmd/tq            run the demo against the fake provider
 go run ./cmd/tq check      read every queue once and print it, with no interface
+go run ./cmd/tq order      print the tickets of each queue in working order, for an LLM agent
 go test ./...              tests
 go vet ./...               static checks
 git config core.hooksPath .githooks    turn the hooks on in a new clone

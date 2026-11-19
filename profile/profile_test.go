@@ -27,6 +27,9 @@ label = "Tags"
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !p.Queues[0].InOrder() {
+		t.Error("a queue with no order key is out of the order")
+	}
 	if got := p.Queues[0].Layout; got != LayoutTable {
 		t.Errorf("default layout = %q", got)
 	}
@@ -92,5 +95,26 @@ func TestParseRejectsMistakes(t *testing.T) {
 		} else if !strings.Contains(err.Error(), "profile") && name != "bad duration" {
 			t.Errorf("%s: error does not say where it came from: %v", name, err)
 		}
+	}
+}
+
+func TestOrderFalseKeepsAQueueOut(t *testing.T) {
+	p, err := Parse(`
+[provider]
+kind = "fake"
+
+[[queue]]
+name = "Overview"
+order = false
+
+[[queue]]
+name = "Mine"
+order = true
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Queues[0].InOrder() || !p.Queues[1].InOrder() {
+		t.Errorf("InOrder = %v, %v", p.Queues[0].InOrder(), p.Queues[1].InOrder())
 	}
 }

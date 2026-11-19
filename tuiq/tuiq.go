@@ -5,6 +5,7 @@ package tuiq
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
 	tea "charm.land/bubbletea/v2"
@@ -41,13 +42,36 @@ func WithActions(actions ...ext.Action) Option {
 	return func(c *config) { c.actions = append(c.actions, actions...) }
 }
 
-// Run starts the interface and returns when the user quits. When the
-// program's first argument is "check", Run reads every queue once, prints
-// the result and returns without starting the interface.
+// usage is printed by "tq help" and with the error for an unknown command.
+const usage = `usage:
+  tq                                  start the interface
+  tq order [--queue NAME] [--limit N] print the tickets of each queue in working order
+  tq check                            read every queue once and print what came back
+  tq help                             print this
+`
+
+// Run starts the interface and returns when the user quits. The program's
+// first argument can name a command that runs without the interface:
+// "order" prints the working order, "check" tests a profile, and "help"
+// prints the usage. Any other argument is an error, so that a mistyped
+// command does not start a full-screen program.
 func Run(opts ...Option) error {
 	var cfg config
 	for _, opt := range opts {
 		opt(&cfg)
+	}
+	command, args := "", []string(nil)
+	if len(os.Args) > 1 {
+		command, args = os.Args[1], os.Args[2:]
+	}
+	switch command {
+	case "", "check", "order":
+	case "help", "-h", "-help", "--help":
+		fmt.Print(usage)
+		return nil
+	default:
+		fmt.Fprint(os.Stderr, usage)
+		return fmt.Errorf("no command named %q", command)
 	}
 	if cfg.profileText == "" {
 		return errors.New("tuiq: no profile given; pass WithProfile")
@@ -60,8 +84,11 @@ func Run(opts ...Option) error {
 	if err != nil {
 		return err
 	}
-	if len(os.Args) > 1 && os.Args[1] == "check" {
+	switch command {
+	case "check":
 		return check(os.Stdout, prof, prov)
+	case "order":
+		return order(os.Stdout, prof, prov, args)
 	}
 	// Settings changed in the interface are kept per site. Without a place
 	// to keep them they last until the program exits.

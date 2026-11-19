@@ -43,6 +43,40 @@ A profile is a TOML file naming the platform, the queues, and the fields a ticke
 `cmd/tq/profile.toml` is the demo. Set `TQ_PROFILE` to the path of another file to load it
 in place of the built-in one.
 
+## `tq order`
+
+`tq order` prints the tickets of each queue in the order the interface shows them, without
+starting the interface. It is for an LLM agent that already has its own access to the
+ticketing platform and needs to know what to work on next. A ticket is printed as its key,
+status and title. The command never loads a ticket in full and never writes.
+
+```
+Working order from tq (fake)
+Queues are listed in priority order, then buckets, then tickets. Number 1 is next.
+This list gives order only. Read ticket details and make changes through your own
+access to the ticketing platform, not through tq.
+
+Queue 1: Unassigned (table, 4 tickets)
+  1. DEMO-101  [Open]  Login page returns 500 after password reset
+  2. DEMO-102  [Open]  Export to CSV drops rows with commas in the name
+```
+
+| Flag | Effect |
+|---|---|
+| `--queue NAME` | print one queue |
+| `--limit N` | the most tickets printed for one bucket or lane, 20 unless given |
+
+Queues are printed in profile order, and a table's buckets and a board's lanes in theirs.
+Set `order = false` on a `[[queue]]` to leave it out, as the demo does for its overview
+queue.
+
+To tell an agent about the command, put this in the instructions it reads on every run
+(for Claude Code, `~/.claude/CLAUDE.md`):
+
+> Run `tq order` to see my tickets in the order I mean to work on them. Use it for order
+> only. Read ticket details and make changes through your access to the ticketing
+> platform.
+
 ## Instance modules
 
 Anything specific to one organisation stays out of this repository. Each installation has

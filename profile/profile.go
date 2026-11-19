@@ -57,6 +57,15 @@ type Queue struct {
 	// Refresh is how often the queue reloads on its own. Zero means only
 	// on request.
 	Refresh Duration `toml:"refresh"`
+	// Order set to false keeps the queue out of "tq order". Read it
+	// through InOrder.
+	Order *bool `toml:"order"`
+}
+
+// InOrder reports whether "tq order" lists the queue. It does unless the
+// profile says order = false.
+func (q *Queue) InOrder() bool {
+	return q.Order == nil || *q.Order
 }
 
 // DefaultPageSize is the page size of a bucket that has its own query and

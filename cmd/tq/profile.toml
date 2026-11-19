@@ -17,6 +17,8 @@ columns = ["key", "title", "assignee", "priority", "labels", "updated"]
 [[queue]]
 name = "Everything"
 query = ""
+# An overview, so "tq order" leaves it out of the working order.
+order = false
 columns = ["key", "title", "status", "assignee", "priority", "labels", "updated"]
 
 [[queue]]

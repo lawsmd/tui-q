@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/lawsmd/tui-q/internal/arrange"
 	"github.com/lawsmd/tui-q/ticket"
 )
 
@@ -16,7 +17,7 @@ const (
 )
 
 // noLane names the lane for tickets whose group field is empty.
-const noLane = "(none)"
+const noLane = arrange.NoLane
 
 // titleLines is how many lines a card gives the title.
 const titleLines = 2
@@ -30,10 +31,7 @@ type lane struct {
 
 // laneOf is the name of the lane a ticket belongs in.
 func (q *queue) laneOf(t ticket.Ticket) string {
-	if name := t.Field(q.cfg.GroupBy).String(); name != "" {
-		return name
-	}
-	return noLane
+	return arrange.LaneOf(q.cfg, t)
 }
 
 // lanes groups the tickets. The profile's lanes come first, in its order
@@ -41,20 +39,8 @@ func (q *queue) laneOf(t ticket.Ticket) string {
 // them, so no ticket is left off the board.
 func (q *queue) lanes() []lane {
 	var out []lane
-	index := map[string]int{}
-	for _, name := range q.cfg.Lanes {
-		index[strings.ToLower(name)] = len(out)
-		out = append(out, lane{name: name})
-	}
-	for i, t := range q.tickets {
-		name := q.laneOf(t)
-		n, ok := index[strings.ToLower(name)]
-		if !ok {
-			n = len(out)
-			index[strings.ToLower(name)] = n
-			out = append(out, lane{name: name})
-		}
-		out[n].tickets = append(out[n].tickets, i)
+	for _, l := range arrange.Lanes(q.cfg, q.tickets) {
+		out = append(out, lane{name: l.Name, tickets: l.Tickets})
 	}
 	return out
 }
