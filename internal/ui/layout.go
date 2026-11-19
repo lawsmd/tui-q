@@ -133,13 +133,6 @@ func (m *Model) queueTabRow(w int) (row []*lipgloss.Layer, end, limit int) {
 func (m *Model) ticketTabs(x, y, limit int) []*lipgloss.Layer {
 	s := m.styles
 	var layers []*lipgloss.Layer
-	if len(m.tabs) == 0 {
-		hint := s.SubTab.Render("click a ticket to open it here")
-		if x+lipgloss.Width(hint) <= limit {
-			layers = append(layers, lipgloss.NewLayer(hint).X(x).Y(y).Z(zItem))
-		}
-		return layers
-	}
 	w := limit
 	for i, tab := range m.tabs {
 		style := s.SubTab
