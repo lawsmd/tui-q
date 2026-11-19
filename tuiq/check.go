@@ -60,7 +60,11 @@ func check(w io.Writer, prof *profile.Profile, prov provider.Provider) error {
 			if err != nil {
 				return fmt.Errorf("queue %q, bucket %q: %w", q.Name, b.Name, err)
 			}
-			fmt.Fprintf(w, "%s, bucket %s: first %d of %d tickets (-1 means the platform gave no total)\n", q.Name, b.Name, len(page.Tickets), page.Total)
+			size := "an unknown number of"
+			if page.Total >= 0 {
+				size = fmt.Sprint(page.Total)
+			}
+			fmt.Fprintf(w, "%s, bucket %s: first %d of %s tickets\n", q.Name, b.Name, len(page.Tickets), size)
 			tickets = append(tickets, page.Tickets...)
 		}
 		fmt.Fprintf(w, "%s (%s): %d tickets\n", q.Name, q.Layout, len(tickets))
