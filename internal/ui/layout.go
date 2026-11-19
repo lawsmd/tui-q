@@ -182,7 +182,7 @@ func (m *Model) statusBar(w int) *lipgloss.Layer {
 	if m.activeTab < 0 {
 		q := m.queues[m.activeQueue]
 		if !q.loadedAt.IsZero() {
-			right = fmt.Sprintf("%d tickets, loaded %s", len(q.tickets), q.loadedAt.Format("15:04:05"))
+			right = fmt.Sprintf("%d tickets, loaded %s", q.count(), q.loadedAt.Format("15:04:05"))
 		}
 	}
 	rw := lipgloss.Width(right)

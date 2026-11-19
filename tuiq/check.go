@@ -43,9 +43,25 @@ func check(w io.Writer, prof *profile.Profile, prov provider.Provider) error {
 
 	firstID := ""
 	for _, q := range prof.Queues {
-		tickets, err := prov.Search(ctx, q.Query)
-		if err != nil {
-			return fmt.Errorf("queue %q: %w", q.Name, err)
+		var tickets []ticket.Ticket
+		if !q.OwnQueries() {
+			found, err := prov.Search(ctx, q.Query)
+			if err != nil {
+				return fmt.Errorf("queue %q: %w", q.Name, err)
+			}
+			tickets = found
+		}
+		// A bucket with its own query adds its first page.
+		for _, b := range q.Buckets {
+			if b.Query == "" {
+				continue
+			}
+			page, err := prov.SearchPage(ctx, b.Query, "", b.PageSize)
+			if err != nil {
+				return fmt.Errorf("queue %q, bucket %q: %w", q.Name, b.Name, err)
+			}
+			fmt.Fprintf(w, "%s, bucket %s: first %d of %d tickets (-1 means the platform gave no total)\n", q.Name, b.Name, len(page.Tickets), page.Total)
+			tickets = append(tickets, page.Tickets...)
 		}
 		fmt.Fprintf(w, "%s (%s): %d tickets\n", q.Name, q.Layout, len(tickets))
 		for i, t := range tickets {

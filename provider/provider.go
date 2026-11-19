@@ -27,6 +27,17 @@ type Config struct {
 	Fields map[string]string `toml:"-"`
 }
 
+// Page is one page of the results of a query.
+type Page struct {
+	Tickets []ticket.Ticket
+	// Next is the cursor that asks for the page after this one. It is
+	// empty on the last page.
+	Next string
+	// Total is how many tickets the query matches, or -1 when the
+	// platform does not say.
+	Total int
+}
+
 // Provider is one ticketing platform. Every method may block on the network;
 // the UI calls them only through the operation runner.
 type Provider interface {
@@ -37,6 +48,11 @@ type Provider interface {
 	Resolve(input string) (string, error)
 	// Search runs a query written in the platform's own query language.
 	Search(ctx context.Context, query string) ([]ticket.Ticket, error)
+	// SearchPage runs a query and returns one page of at most limit
+	// tickets. An empty cursor asks for the first page, and the Next of a
+	// page asks for the one after it. A cursor is only good for the query
+	// and limit it came from.
+	SearchPage(ctx context.Context, query, cursor string, limit int) (Page, error)
 	// Get loads one ticket in full, with body and comments.
 	Get(ctx context.Context, id string) (ticket.Ticket, error)
 	// Transitions lists the status changes open to a ticket now.

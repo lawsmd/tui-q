@@ -94,6 +94,8 @@ func newServer(t *testing.T) *server {
 			} else {
 				io.WriteString(w, `{"issues": [`+strings.Replace(issueJSON, "DEMO-7", "DEMO-8", 1)+`]}`)
 			}
+		case r.URL.Path == "/rest/api/3/search/approximate-count":
+			io.WriteString(w, `{"count": 412}`)
 		case r.URL.Path == "/rest/api/3/issue/DEMO-7" && r.Method == http.MethodGet:
 			io.WriteString(w, issueJSON)
 		case r.URL.Path == "/rest/api/3/issue/DEMO-7/transitions" && r.Method == http.MethodGet:
@@ -156,6 +158,34 @@ func TestSearchFollowsPages(t *testing.T) {
 	}
 	if !strings.HasPrefix(s.auth, "Basic ") {
 		t.Errorf("Authorization = %q", s.auth)
+	}
+}
+
+func TestSearchPageAsksForOnePage(t *testing.T) {
+	s := newServer(t)
+	p := newProvider(s)
+	first, err := p.SearchPage(context.Background(), "project = DEMO", "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Tickets) != 1 || first.Tickets[0].Key != "DEMO-7" || first.Next != "page2" || first.Total != 412 {
+		t.Fatalf("first page: %+v", first)
+	}
+	if !strings.Contains(s.bodies[0], `"maxResults":10`) || strings.Contains(s.bodies[0], "nextPageToken") {
+		t.Errorf("first request: %s", s.bodies[0])
+	}
+	if len(s.requests) != 2 || !strings.HasSuffix(s.requests[1], "/search/approximate-count") {
+		t.Fatalf("requests: %v", s.requests)
+	}
+	second, err := p.SearchPage(context.Background(), "project = DEMO", first.Next, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Tickets) != 1 || second.Tickets[0].Key != "DEMO-8" || second.Next != "" {
+		t.Fatalf("second page: %+v", second)
+	}
+	if !strings.Contains(s.bodies[2], `"nextPageToken":"page2"`) {
+		t.Errorf("second request: %s", s.bodies[2])
 	}
 }
 

@@ -140,6 +140,39 @@ func (p *Provider) Search(ctx context.Context, query string) ([]ticket.Ticket, e
 	}
 }
 
+// SearchPage runs a JQL query for one page. The cursor is Jira's page
+// token. The total is Jira's approximate count, and -1 when Jira does not
+// give one.
+func (p *Provider) SearchPage(ctx context.Context, query, cursor string, limit int) (provider.Page, error) {
+	body := map[string]any{
+		"jql":        query,
+		"fields":     p.fieldIDs(),
+		"maxResults": max(limit, 1),
+	}
+	if cursor != "" {
+		body["nextPageToken"] = cursor
+	}
+	var resp struct {
+		Issues        []issue `json:"issues"`
+		NextPageToken string  `json:"nextPageToken"`
+	}
+	if err := p.client.Do(ctx, http.MethodPost, "/rest/api/3/search/jql", body, &resp); err != nil {
+		return provider.Page{}, err
+	}
+	page := provider.Page{Next: resp.NextPageToken, Total: -1}
+	for _, is := range resp.Issues {
+		page.Tickets = append(page.Tickets, p.toTicket(is))
+	}
+	var count struct {
+		Count *int `json:"count"`
+	}
+	err := p.client.Do(ctx, http.MethodPost, "/rest/api/3/search/approximate-count", map[string]any{"jql": query}, &count)
+	if err == nil && count.Count != nil {
+		page.Total = *count.Count
+	}
+	return page, nil
+}
+
 // Get loads one issue with its description, its comments, and the fields
 // of its edit screen.
 func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {

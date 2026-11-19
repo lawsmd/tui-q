@@ -37,6 +37,10 @@ type Styles struct {
 	LaneHeader lipgloss.Style
 	// Bucket is the heading of a section of a table.
 	Bucket lipgloss.Style
+	// Page is a button on a bucket heading that turns its pages, and
+	// PageOff the same button with no page to turn to.
+	Page    lipgloss.Style
+	PageOff lipgloss.Style
 	// LaneTarget marks the lane a dragged card would be dropped on.
 	LaneTarget lipgloss.Style
 	CardBorder lipgloss.Style
@@ -99,6 +103,8 @@ func DefaultStyles() Styles {
 
 		LaneHeader: lipgloss.NewStyle().Background(barAlt).Foreground(text).Bold(true),
 		Bucket:     lipgloss.NewStyle().Background(band).Foreground(bright).Bold(true),
+		Page:       lipgloss.NewStyle().Background(band).Foreground(bright).Bold(true),
+		PageOff:    lipgloss.NewStyle().Background(band).Foreground(dim),
 		LaneTarget: lipgloss.NewStyle().Background(accent).Foreground(onLight).Bold(true),
 		CardBorder: lipgloss.NewStyle().Foreground(dim),
 		CardKey:    lipgloss.NewStyle().Foreground(accent).Bold(true),

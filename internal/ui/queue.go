@@ -29,8 +29,14 @@ const moreGlyph = "⋮"
 
 // queue is one top-level tab and the tickets its query returned.
 type queue struct {
-	cfg      *profile.Queue
-	tickets  []ticket.Ticket
+	cfg *profile.Queue
+	// tickets are the tickets of the queue's own query, then the loaded
+	// page of each bucket that has a query of its own. from says where
+	// each came from: the index of the bucket, or fromQueue.
+	tickets []ticket.Ticket
+	from    []int
+	// pages is the paging state of each bucket, by its index.
+	pages    []bucketPage
 	loading  bool
 	loadedAt time.Time
 	// offset is the index of the first ticket drawn in a table.
@@ -50,6 +56,60 @@ type queue struct {
 	flex int
 }
 
+// fromQueue marks a ticket that the queue's own query returned.
+const fromQueue = -1
+
+// bucketPage is which page of a bucket is shown. For a bucket with its
+// own query it also holds what the platform said about that page.
+type bucketPage struct {
+	// page is the page shown, counted from zero.
+	page int
+	// cursors holds the cursor that asks for each page reached so far.
+	cursors []string
+	// total is the number of tickets in the bucket, or -1 when the
+	// platform does not say, and more says a page follows this one.
+	total  int
+	more   bool
+	loaded bool
+}
+
+// page returns the paging state of bucket j.
+func (q *queue) page(j int) *bucketPage {
+	if len(q.pages) < len(q.cfg.Buckets) {
+		q.pages = append(q.pages, make([]bucketPage, len(q.cfg.Buckets)-len(q.pages))...)
+	}
+	return &q.pages[j]
+}
+
+// source is where ticket i came from: a bucket, or fromQueue.
+func (q *queue) source(i int) int {
+	if i < len(q.from) {
+		return q.from[i]
+	}
+	return fromQueue
+}
+
+// setSource replaces the tickets that came from one source and keeps the
+// rest, with the queue's own tickets first and then each bucket's.
+func (q *queue) setSource(src int, tickets []ticket.Ticket) {
+	var all []ticket.Ticket
+	var from []int
+	for s := fromQueue; s < len(q.cfg.Buckets); s++ {
+		if s == src {
+			for _, t := range tickets {
+				all, from = append(all, t), append(from, s)
+			}
+			continue
+		}
+		for i, t := range q.tickets {
+			if q.source(i) == s {
+				all, from = append(all, t), append(from, s)
+			}
+		}
+	}
+	q.tickets, q.from = all, from
+}
+
 // line is one line of a table: a ticket, or the heading of a bucket.
 type line struct {
 	// ticket is the index of the ticket, or -1 on a heading.
@@ -57,6 +117,38 @@ type line struct {
 	heading string
 	// odd says the ticket is on an odd place in its section.
 	odd bool
+	// pager is set on the heading of a bucket shown one page at a time,
+	// to the index of the bucket plus one. prev and next say which ways
+	// its pages can be turned.
+	pager      int
+	prev, next bool
+}
+
+// sections sorts the tickets of a table with buckets: one list of ticket
+// indexes for each bucket, and a last one for the tickets in none. A
+// ticket loaded by a bucket's own query is in that bucket, and any other
+// goes in the first bucket whose values it matches.
+func (q *queue) sections() [][]int {
+	sections := make([][]int, len(q.cfg.Buckets)+1)
+	for i, t := range q.tickets {
+		at := len(q.cfg.Buckets)
+		if src := q.source(i); src != fromQueue {
+			at = src
+		} else {
+			for j, b := range q.cfg.Buckets {
+				if b.Query != "" {
+					continue
+				}
+				value := t.Field(b.Field).String()
+				if slices.ContainsFunc(b.Values, func(v string) bool { return strings.EqualFold(v, value) }) {
+					at = j
+					break
+				}
+			}
+		}
+		sections[at] = append(sections[at], i)
+	}
+	return sections
 }
 
 // lines lists the lines of a table from top to bottom. A table with
@@ -70,28 +162,39 @@ func (q *queue) lines() []line {
 		}
 		return out
 	}
-	sections := make([][]int, len(q.cfg.Buckets)+1)
-	for i, t := range q.tickets {
-		at := len(q.cfg.Buckets)
-		for j, b := range q.cfg.Buckets {
-			value := t.Field(b.Field).String()
-			if slices.ContainsFunc(b.Values, func(v string) bool { return strings.EqualFold(v, value) }) {
-				at = j
-				break
-			}
-		}
-		sections[at] = append(sections[at], i)
-	}
 	var out []line
-	for j, members := range sections {
-		name := "Other"
+	for j, members := range q.sections() {
+		head := line{ticket: -1, heading: fmt.Sprintf("Other  %d", len(members))}
 		if j < len(q.cfg.Buckets) {
-			name = q.cfg.Buckets[j].Name
+			b := q.cfg.Buckets[j]
+			head.heading = fmt.Sprintf("%s  %d", b.Name, len(members))
+			if b.PageSize > 0 {
+				st := q.page(j)
+				total, more := st.total, st.more
+				if b.Query == "" {
+					// The whole bucket is loaded: cut the page out of it.
+					total = len(members)
+					st.page = clamp(st.page, 0, (total-1)/b.PageSize)
+					members = members[st.page*b.PageSize:]
+					more = len(members) > b.PageSize
+					members = members[:min(len(members), b.PageSize)]
+				}
+				first := st.page * b.PageSize
+				switch {
+				case len(members) == 0:
+					head.heading = b.Name + "  0"
+				case total < 0:
+					head.heading = fmt.Sprintf("%s  %d-%d", b.Name, first+1, first+len(members))
+				default:
+					head.heading = fmt.Sprintf("%s  %d-%d of %d", b.Name, first+1, first+len(members), total)
+				}
+				head.pager, head.prev, head.next = j+1, st.page > 0, more
+			}
 		} else if len(members) == 0 || q.cfg.HideUnmatched {
 			break
 		}
 		// A blank line sets each section off from what is above it.
-		out = append(out, line{ticket: -1}, line{ticket: -1, heading: fmt.Sprintf("%s  %d", name, len(members))})
+		out = append(out, line{ticket: -1}, head)
 		for n, i := range members {
 			out = append(out, line{ticket: i, odd: n%2 == 1})
 		}
@@ -99,15 +202,24 @@ func (q *queue) lines() []line {
 	return out
 }
 
-// count is the number of tickets the queue shows.
+// count is the number of tickets in the queue. A bucket with its own
+// query counts for its total when the platform gave one, and for the page
+// that is loaded otherwise.
 func (q *queue) count() int {
-	if !q.cfg.HideUnmatched {
+	if len(q.cfg.Buckets) == 0 {
 		return len(q.tickets)
 	}
 	n := 0
-	for _, ln := range q.lines() {
-		if ln.ticket >= 0 {
-			n++
+	for j, members := range q.sections() {
+		switch {
+		case j == len(q.cfg.Buckets):
+			if !q.cfg.HideUnmatched {
+				n += len(members)
+			}
+		case q.cfg.Buckets[j].Query != "" && q.page(j).loaded && q.page(j).total >= 0:
+			n += q.page(j).total
+		default:
+			n += len(members)
 		}
 	}
 	return n
@@ -199,6 +311,9 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 		if ln.ticket < 0 {
 			heading := s.Bucket.Render(fit(" "+ln.heading, a.w))
 			layers = append(layers, lipgloss.NewLayer(heading).X(a.x).Y(a.y+1+row).Z(zScenery))
+			if ln.pager > 0 {
+				layers = append(layers, pager(s, a.x+a.w-moreWidth, a.y+1+row, ln.pager-1, ln.prev, ln.next)...)
+			}
 			continue
 		}
 		index := ln.ticket
@@ -232,6 +347,21 @@ func arrows(s Styles, x, y int, left, right bool) []*lipgloss.Layer {
 	r := lipgloss.NewLayer(s.ArrowOff.Render("› ")).X(x + 3).Y(y).Z(zButton)
 	if right {
 		r = lipgloss.NewLayer(s.Arrow.Render("› ")).ID(idRight).X(x + 3).Y(y).Z(zButton)
+	}
+	return []*lipgloss.Layer{l, r}
+}
+
+// pager is the pair of buttons on the heading of a bucket that turn its
+// pages, moreWidth cells wide. A direction with no page to go to is drawn
+// faint and cannot be clicked.
+func pager(s Styles, x, y, bucket int, prev, next bool) []*lipgloss.Layer {
+	l := lipgloss.NewLayer(s.PageOff.Render(" ‹")).X(x).Y(y).Z(zButton)
+	if prev {
+		l = lipgloss.NewLayer(s.Page.Render(" ‹")).ID(layerID(idPagePrev, bucket)).X(x).Y(y).Z(zButton)
+	}
+	r := lipgloss.NewLayer(s.PageOff.Render("› ")).X(x + 3).Y(y).Z(zButton)
+	if next {
+		r = lipgloss.NewLayer(s.Page.Render("› ")).ID(layerID(idPageNext, bucket)).X(x + 3).Y(y).Z(zButton)
 	}
 	return []*lipgloss.Layer{l, r}
 }

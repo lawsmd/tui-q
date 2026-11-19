@@ -59,13 +59,35 @@ type Queue struct {
 	Refresh Duration `toml:"refresh"`
 }
 
-// Bucket is one section of a table: the tickets whose field holds one of
-// the values.
+// DefaultPageSize is the page size of a bucket that has its own query and
+// names no size.
+const DefaultPageSize = 10
+
+// Bucket is one section of a table. It holds the tickets of the queue
+// whose field has one of the values, or the tickets of its own query.
 type Bucket struct {
 	Name string `toml:"name"`
 	// Field defaults to the status.
 	Field  string   `toml:"field"`
 	Values []string `toml:"values"`
+	// Query, when set, is run for this bucket alone, one page at a time,
+	// and Field and Values are not used. It suits a bucket too large to
+	// load whole.
+	Query string `toml:"query"`
+	// PageSize is how many tickets the bucket shows at once. Zero shows
+	// them all, which a bucket with its own query cannot do.
+	PageSize int `toml:"page_size"`
+}
+
+// OwnQueries reports whether every bucket of the queue has its own query,
+// so that the query of the queue itself is not needed.
+func (q *Queue) OwnQueries() bool {
+	for _, b := range q.Buckets {
+		if b.Query == "" {
+			return false
+		}
+	}
+	return len(q.Buckets) > 0
 }
 
 // TicketView lists the fields of the ticket view, in display order.
@@ -200,8 +222,14 @@ func (p *Profile) finish() error {
 		}
 		for j := range q.Buckets {
 			b := &q.Buckets[j]
-			if b.Name == "" || len(b.Values) == 0 {
-				return fmt.Errorf("profile: queue %q: bucket %d needs a name and values", q.Name, j+1)
+			if b.Name == "" || (len(b.Values) == 0 && b.Query == "") {
+				return fmt.Errorf("profile: queue %q: bucket %d needs a name, and values or a query", q.Name, j+1)
+			}
+			if b.PageSize < 0 {
+				return fmt.Errorf("profile: queue %q: bucket %q: page_size is negative", q.Name, b.Name)
+			}
+			if b.Query != "" && b.PageSize == 0 {
+				b.PageSize = DefaultPageSize
 			}
 			if b.Field == "" {
 				b.Field = ticket.FieldStatus

@@ -50,6 +50,10 @@ The Jira client has `Do` for JSON and `Raw` for files.
   default) and the values that put a ticket in it. Buckets are drawn from top to bottom
   with a blank line above each, and scroll as one list. A ticket that matches none is listed under `Other`, or left out
   of the table and the count when the queue sets `hide_unmatched = true`.
+  A bucket with `page_size` shows that many tickets at a time. A bucket with its own
+  `query` takes its tickets from that query, one page at a time (ten when it names no
+  `page_size`), and needs no `values`; this suits a bucket too large to load whole.
+  When every bucket of a queue has its own query, the query of the queue is not run.
 - `[ticket]`: main fields and sidebar fields in order; whether comments are shown.
 - `[fields.<name>]`: platform field ID, type, label. A field with no label is shown
   under the name the platform gives it.
@@ -69,6 +73,16 @@ The Jira client has `Do` for JSON and `Raw` for files.
   `esc` or a click elsewhere closes the box. The provider's `Resolve` reads the text.
   When the queue tabs leave too little room the box is drawn as a `go to` button, and
   in a narrower pane it is left out and `/` still opens it.
+- The heading of a bucket shown one page at a time gives the range on screen and the
+  size of the bucket, such as `11-20 of 412`, and has a pair of arrows at its right end
+  that turn the page. A bucket with its own query loads the page as a read; any other
+  has its tickets already. The queue tab counts the whole bucket. After a write the
+  page on screen is loaded again, and a page that is no longer there is answered with
+  the first.
+- A provider pages with `SearchPage`, which takes a cursor: empty for the first page,
+  then the `Next` of the page before. A platform that pages by position can use the
+  position as its cursor. `Total` is -1 when the platform gives no count, and the
+  heading then shows the range alone.
 - Every frame is a Lip Gloss compositor tree. `internal/hit` reports click, right-click,
   drag, drop and wheel against layer IDs.
 - A dragged card is drawn as a top layer with no ID, so the hit test reports the lane

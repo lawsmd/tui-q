@@ -81,6 +81,8 @@ func TestParseRejectsMistakes(t *testing.T) {
 		"no queue":     "[provider]\nkind = \"fake\"\n",
 		"bad layout":   "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\nlayout = \"grid\"\n",
 		"unnamed":      "[provider]\nkind = \"fake\"\n[[queue]]\nquery = \"x\"\n",
+		"empty bucket": "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\n[[queue.bucket]]\nname = \"B\"\n",
+		"bad page":     "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\n[[queue.bucket]]\nname = \"B\"\nquery = \"x\"\npage_size = -1\n",
 		"bad icon":     "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\n[fields.type.icons]\nBug = \"nonesuch\"\n",
 		"bad duration": "[provider]\nkind = \"fake\"\n[[queue]]\nname = \"A\"\nrefresh = \"soon\"\n",
 	}

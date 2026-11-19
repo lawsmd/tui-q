@@ -28,6 +28,7 @@ go run ./cmd/tq
 | Click a ticket | open it in a ticket tab |
 | Click `x` on a ticket tab | close it |
 | Mouse wheel | scroll |
+| Click `‹` or `›` on a bucket heading | previous or next page of the bucket |
 | `tab`, `shift+tab` | next and previous queue |
 | `esc` | back to the queue |
 | `ctrl+w` | close the ticket tab |

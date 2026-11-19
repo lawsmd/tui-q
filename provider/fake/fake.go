@@ -6,6 +6,7 @@ package fake
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -106,6 +107,29 @@ func (p *Provider) Search(ctx context.Context, query string) ([]ticket.Ticket, e
 		}
 	}
 	return out, nil
+}
+
+// SearchPage returns one page of what Search finds. The cursor is the
+// number of tickets to skip.
+func (p *Provider) SearchPage(ctx context.Context, query, cursor string, limit int) (provider.Page, error) {
+	all, err := p.Search(ctx, query)
+	if err != nil {
+		return provider.Page{}, err
+	}
+	skip := 0
+	if cursor != "" {
+		if skip, err = strconv.Atoi(cursor); err != nil || skip < 0 {
+			return provider.Page{}, fmt.Errorf("bad cursor %q", cursor)
+		}
+	}
+	page := provider.Page{Total: len(all)}
+	skip = min(skip, len(all))
+	end := min(skip+max(limit, 1), len(all))
+	page.Tickets = all[skip:end]
+	if end < len(all) {
+		page.Next = strconv.Itoa(end)
+	}
+	return page, nil
 }
 
 type term struct{ name, value string }

@@ -59,6 +59,8 @@ const (
 	idGear       = "gear"
 	idAction     = "action"
 	idJump       = "jump"
+	idPagePrev   = "pageprev"
+	idPageNext   = "pagenext"
 )
 
 // hitEvent is one mouse gesture.
@@ -82,6 +84,12 @@ func splitID(id string) (kind string, n int) {
 type queueLoadedMsg struct {
 	index   int
 	tickets []ticket.Ticket
+}
+
+// bucketLoadedMsg carries one page of a bucket that has its own query.
+type bucketLoadedMsg struct {
+	queue, bucket, page int
+	result              provider.Page
 }
 
 // ticketLoadedMsg carries one ticket loaded in full and the moves open to
@@ -241,17 +249,76 @@ func (m *Model) spinWith(cmd tea.Cmd) tea.Cmd {
 	return tea.Batch(cmd, m.spin.Tick)
 }
 
+// loadQueue runs the query of a queue, and loads the page on screen of
+// each bucket that has a query of its own.
 func (m *Model) loadQueue(i int) tea.Cmd {
 	q := m.queues[i]
 	q.loading = true
-	query := q.cfg.Query
-	return m.start("Loading "+q.cfg.Name, false, func(ctx context.Context) (tea.Msg, error) {
-		tickets, err := m.prov.Search(ctx, query)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", q.cfg.Name, err)
+	var cmds []tea.Cmd
+	if !q.cfg.OwnQueries() {
+		query := q.cfg.Query
+		cmds = append(cmds, m.start("Loading "+q.cfg.Name, false, func(ctx context.Context) (tea.Msg, error) {
+			tickets, err := m.prov.Search(ctx, query)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", q.cfg.Name, err)
+			}
+			return queueLoadedMsg{index: i, tickets: tickets}, nil
+		}))
+	}
+	for j, b := range q.cfg.Buckets {
+		if b.Query != "" {
+			cmds = append(cmds, m.loadBucket(i, j, q.page(j).page))
 		}
-		return queueLoadedMsg{index: i, tickets: tickets}, nil
+	}
+	return tea.Batch(cmds...)
+}
+
+// loadBucket loads one page of a bucket that has its own query. A page
+// past the first that comes back empty or is refused, as it may be after
+// a change to the tickets, is answered with the first page.
+func (m *Model) loadBucket(i, j, page int) tea.Cmd {
+	q := m.queues[i]
+	b := q.cfg.Buckets[j]
+	st := q.page(j)
+	if page < 0 || page >= len(st.cursors) {
+		page = 0
+	}
+	cursor := ""
+	label := "Loading " + b.Name
+	if page > 0 {
+		cursor = st.cursors[page]
+		label = fmt.Sprintf("%s, page %d", label, page+1)
+	}
+	return m.start(label, false, func(ctx context.Context) (tea.Msg, error) {
+		result, err := m.prov.SearchPage(ctx, b.Query, cursor, b.PageSize)
+		if page > 0 && (err != nil || len(result.Tickets) == 0) {
+			page = 0
+			result, err = m.prov.SearchPage(ctx, b.Query, "", b.PageSize)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", b.Name, err)
+		}
+		return bucketLoadedMsg{queue: i, bucket: j, page: page, result: result}, nil
 	})
+}
+
+// turnPage shows the page before or after the one a bucket is on. A
+// bucket with its own query loads it; any other has its tickets already.
+func (m *Model) turnPage(j, by int) tea.Cmd {
+	q := m.queues[m.activeQueue]
+	if j < 0 || j >= len(q.cfg.Buckets) {
+		return nil
+	}
+	st := q.page(j)
+	if q.cfg.Buckets[j].Query == "" {
+		// The next draw keeps the page inside the bucket.
+		st.page = max(st.page+by, 0)
+		return nil
+	}
+	if (by > 0 && !st.more) || (by < 0 && st.page == 0) {
+		return nil
+	}
+	return m.loadBucket(m.activeQueue, j, st.page+by)
 }
 
 // openTicket shows a ticket in a tab, adding the tab when the ticket is not
@@ -353,7 +420,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case queueLoadedMsg:
 		q := m.queues[msg.index]
-		q.tickets = msg.tickets
+		q.setSource(fromQueue, msg.tickets)
+		q.loading = false
+		q.loadedAt = time.Now()
+
+	case bucketLoadedMsg:
+		q := m.queues[msg.queue]
+		st := q.page(msg.bucket)
+		st.page, st.total, st.more, st.loaded = msg.page, msg.result.Total, msg.result.Next != "", true
+		// Keep the cursors up to this page, and add the one for the next.
+		st.cursors = append(st.cursors, "")[:max(min(len(st.cursors), msg.page+1), 1)]
+		if st.more {
+			st.cursors = append(st.cursors, msg.result.Next)
+		}
+		q.setSource(msg.bucket, msg.result.Tickets)
 		q.loading = false
 		q.loadedAt = time.Now()
 
@@ -636,6 +716,10 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		m.menuFor(ev)
 	case idJump:
 		return m.focusJump()
+	case idPagePrev:
+		return m.turnPage(n, -1)
+	case idPageNext:
+		return m.turnPage(n, 1)
 	case idGear:
 		m.viewMenu(ev.X, ev.Y)
 	case idLeft:
