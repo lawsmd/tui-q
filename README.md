@@ -51,7 +51,7 @@ image to the screen.
 | Where `tq` runs | Comment box |
 |---|---|
 | Windows Terminal 1.22 or later | works |
-| Herdr 0.8.2 or 0.9.5, inside Windows Terminal | works; slate writes the image to the terminal behind Herdr |
+| Herdr, inside Windows Terminal | works; slate writes the image to the terminal behind Herdr |
 | tmux, Zellij | does not open; they drop the image |
 
 In Herdr, set this in `config.toml` and apply it with `herdr server reload-config`.
