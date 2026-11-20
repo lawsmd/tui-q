@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"golang.org/x/net/html"
+
+	"github.com/lawsmd/tui-q/provider"
 )
 
 // HTMLToMarkdown converts the HTML of a description or comment into
@@ -77,6 +79,10 @@ func (w *mdWriter) node(n *html.Node) {
 	default:
 		return
 	}
+	if w.pre {
+		w.preNode(n)
+		return
+	}
 	switch n.Data {
 	case "script", "style", "head":
 	case "p", "div", "section", "article":
@@ -101,18 +107,12 @@ func (w *mdWriter) node(n *html.Node) {
 	case "i", "em":
 		w.wrap(n, "*")
 	case "code":
-		if w.pre {
-			w.children(n)
-			return
-		}
 		w.wrap(n, "`")
 	case "pre":
+		inner := mdWriter{pre: true}
+		inner.children(n)
 		w.block()
-		w.b.WriteString("```\n")
-		w.pre = true
-		w.children(n)
-		w.pre = false
-		w.b.WriteString("\n```")
+		w.b.WriteString(provider.Fence(inner.b.String(), codeLang(n)))
 		w.block()
 	case "a":
 		href := attr(n, "href")
@@ -178,6 +178,45 @@ func (w *mdWriter) node(n *html.Node) {
 	default:
 		w.children(n)
 	}
+}
+
+// preNode writes an element inside a pre block as plain text. A line break
+// or a line-sized element ends a line.
+func (w *mdWriter) preNode(n *html.Node) {
+	switch n.Data {
+	case "script", "style":
+	case "br":
+		w.b.WriteString("\n")
+	case "p", "div", "li", "tr":
+		if s := w.b.String(); s != "" && !strings.HasSuffix(s, "\n") {
+			w.b.WriteString("\n")
+		}
+		w.children(n)
+		w.b.WriteString("\n")
+	default:
+		w.children(n)
+	}
+}
+
+// codeLang reads the language of a pre block from a "language-" or "lang-"
+// class on it or on a code element directly inside it.
+func codeLang(pre *html.Node) string {
+	nodes := []*html.Node{pre}
+	for c := pre.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode && c.Data == "code" {
+			nodes = append(nodes, c)
+		}
+	}
+	for _, n := range nodes {
+		for _, class := range strings.Fields(attr(n, "class")) {
+			for _, prefix := range []string{"language-", "lang-"} {
+				if lang, ok := strings.CutPrefix(class, prefix); ok && lang != "" {
+					return lang
+				}
+			}
+		}
+	}
+	return ""
 }
 
 var spaces = regexp.MustCompile(`\s+`)
