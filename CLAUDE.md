@@ -67,7 +67,7 @@ into this repository.
 - Stay on the Charm stack. If a feature needs a UI library outside it, say so and get a
   decision before writing code. The one exception so far is slate
   (`github.com/lawsmd/slate`), the editor in the comment box. Only `internal/editor`
-  imports it. Do not change slate from here; report what is missing.
+  imports it. See "Working on slate" below.
 - `Model.Update` passes every message it has no use for to the comment box
   (`composerPass`), and `syncComposer` runs after every message to open the box for the
   ticket on screen, to place it, and to cover it while a menu or form is open. A message
@@ -94,6 +94,23 @@ into this repository.
 - `tq order` tells an LLM agent the order to work in. It prints key, status and title for
   each ticket. Do not add other fields, full ticket loads or writes to it: the agent reads
   and changes tickets through its own access to the platform.
+
+## Working on slate
+
+slate is a separate product with its own repository, and it is used outside tui-q. The
+two stay separate repositories. The agent working on tui-q is still the one expected to
+fix and extend slate when tui-q needs it, so the work does not pass back and forth
+between agents in two projects.
+
+- Find where slate is cloned on the machine before starting (the agent's memory records
+  it). Work in that clone, commit there, and push it to its own remote.
+- Change slate only in ways that make sense for slate as a general editor: a bug fix, or
+  a feature another program embedding slate could use too.
+- A problem that only tui-q's use of slate has is solved in `internal/editor`, not in
+  slate.
+- After pushing a slate change, update the dependency here with
+  `go get github.com/lawsmd/slate@<commit>` and `go mod tidy`. Do not commit a `replace`
+  directive that points at a local clone.
 
 ## Commands
 
