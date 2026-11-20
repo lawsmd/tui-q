@@ -16,6 +16,8 @@ import (
 
 	"github.com/lawsmd/tui-q/ext"
 	"github.com/lawsmd/tui-q/internal/browser"
+	"github.com/lawsmd/tui-q/internal/drafts"
+	"github.com/lawsmd/tui-q/internal/editor"
 	"github.com/lawsmd/tui-q/internal/hit"
 	"github.com/lawsmd/tui-q/internal/ops"
 	"github.com/lawsmd/tui-q/internal/prefs"
@@ -63,6 +65,13 @@ const (
 	idPageNext   = "pagenext"
 	// idCommentOrder is the control that turns the order of comments round.
 	idCommentOrder = "commentorder"
+	// idComment is the line of the comment box, and the two after it are
+	// the buttons on that line.
+	idComment        = "comment"
+	idCommentSend    = "commentsend"
+	idCommentDiscard = "commentdiscard"
+	// idCommentKind is one of the kinds of comment on the line of the box.
+	idCommentKind = "commentkind"
 )
 
 // hitEvent is one mouse gesture.
@@ -128,6 +137,10 @@ type Model struct {
 	tabs        []*ticketTab
 	// activeTab is the open ticket being shown, or -1 when the queue is.
 	activeTab int
+	// only is the ID of the one ticket the program was started to show, or
+	// empty. With it set no queue is loaded or drawn, and nothing leads
+	// away from the ticket.
+	only string
 
 	ops      *ops.Runner
 	mouse    hit.Tracker
@@ -154,6 +167,19 @@ type Model struct {
 	// link, and jumping says it has the keyboard.
 	jump    textinput.Model
 	jumping bool
+	// composer is the comment box of the ticket on screen, or nil. drafts
+	// holds the comments started and not sent, openEditor makes the box
+	// one is written in, and warm gets the editor ready ahead of the first
+	// box. noEditor is why the last box did not open, or empty: no other
+	// is opened until the user asks for one.
+	composer *composer
+	// kinds holds, per ticket, the kind of comment picked for it where
+	// that is not the first the provider lists.
+	kinds      map[string]string
+	noEditor   string
+	drafts     *drafts.Store
+	openEditor func(editor.Config) (editor.Box, error)
+	warm       func()
 	// undo puts the screen back when the running write fails.
 	undo func()
 	// notice is a one-line message for the status bar. The next click
@@ -173,6 +199,19 @@ type Options struct {
 	Prefs *prefs.Store
 	// Actions are the instance's own actions on a ticket.
 	Actions []ext.Action
+	// Ticket is the ID of one ticket to show by itself. When it is set the
+	// interface loads no queue and shows nothing but that ticket.
+	Ticket string
+	// Drafts holds the comments started and not sent. When it is nil they
+	// last until the program exits.
+	Drafts *drafts.Store
+	// OpenEditor makes the box a comment is written in. When it is nil, or
+	// the provider cannot add comments, the interface offers no comment
+	// box.
+	OpenEditor func(editor.Config) (editor.Box, error)
+	// WarmEditor, when set, is called once as the first ticket is shown,
+	// to get the editor ready ahead of the first comment.
+	WarmEditor func()
 }
 
 // New builds the model for a profile and its provider.
@@ -180,15 +219,22 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 	if opts.Prefs == nil {
 		opts.Prefs = prefs.Open("")
 	}
+	if opts.Drafts == nil {
+		opts.Drafts = drafts.Open("")
+	}
 	m := &Model{
-		prof:      prof,
-		prov:      prov,
-		prefs:     opts.Prefs,
-		actions:   opts.Actions,
-		styles:    DefaultStyles(),
-		activeTab: -1,
-		ops:       ops.New(),
-		spin:      spinner.New(spinner.WithSpinner(spinner.MiniDot)),
+		prof:       prof,
+		prov:       prov,
+		prefs:      opts.Prefs,
+		actions:    opts.Actions,
+		drafts:     opts.Drafts,
+		openEditor: opts.OpenEditor,
+		warm:       opts.WarmEditor,
+		styles:     DefaultStyles(),
+		activeTab:  -1,
+		only:       opts.Ticket,
+		ops:        ops.New(),
+		spin:       spinner.New(spinner.WithSpinner(spinner.MiniDot)),
 	}
 	m.jump = newJump(m.styles)
 	for i := range prof.Queues {
@@ -198,7 +244,8 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 }
 
 // Init loads every queue, the user's own account, and the platform's
-// names for the profile's fields.
+// names for the profile's fields. Started on one ticket, it loads that
+// ticket in place of the queues.
 func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		m.start("Loading the account", false, func(ctx context.Context) (tea.Msg, error) {
@@ -215,6 +262,9 @@ func (m *Model) Init() tea.Cmd {
 			}
 			return labelsMsg{labels: labels}, nil
 		}),
+	}
+	if m.only != "" {
+		return tea.Batch(append(cmds, m.loadByID(m.only))...)
 	}
 	return tea.Batch(append(cmds, m.reloadQueues())...)
 }
@@ -330,6 +380,7 @@ func (m *Model) turnPage(j, by int) tea.Cmd {
 // openTicket shows a ticket in a tab, adding the tab when the ticket is not
 // already open, and loads the full ticket.
 func (m *Model) openTicket(t ticket.Ticket) tea.Cmd {
+	m.warmEditor()
 	for i, tab := range m.tabs {
 		if tab.t.ID == t.ID {
 			m.activeTab = i
@@ -391,12 +442,40 @@ func (m *Model) openURL(t ticket.Ticket) tea.Cmd {
 	})
 }
 
-// Update handles one message.
+// Update handles one message, then brings the comment box in line with
+// what the message changed.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	_, cmd := m.update(msg)
+	return m, tea.Batch(cmd, m.syncComposer())
+}
+
+func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
 		m.sizeForm()
+		return m, m.composerPass(msg)
+
+	case composerOpenedMsg:
+		return m, m.composerOpened(msg)
+
+	case editor.Changed:
+		return m, m.composerChanged()
+
+	case editor.Failed:
+		if c := m.composer; c != nil && c.box != nil {
+			m.notice = "The comment box could not " + msg.Op + ": " + msg.Err.Error()
+			return m, c.box.Changes()
+		}
+
+	case draftSaveMsg:
+		if c := m.composer; c != nil && c.saves == msg.n {
+			m.saveDraft()
+		}
+
+	case commentedMsg:
+		m.commented(msg)
+		return m.update(msg.changed)
 
 	case spinner.TickMsg:
 		if !m.ops.Busy() {
@@ -422,7 +501,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.Msg != nil {
-			return m.Update(msg.Msg)
+			return m.update(msg.Msg)
 		}
 
 	case queueLoadedMsg:
@@ -484,6 +563,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.notice = msg.note
+		if m.only != "" {
+			return m, nil
+		}
 		// The change may have moved the ticket into or out of any queue.
 		return m, m.reloadQueues()
 
@@ -501,6 +583,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.jumping {
 			return m, m.jumpKey(msg)
 		}
+		if cmd, ok := m.composerKey(msg); ok {
+			return m, cmd
+		}
 		return m, m.key(msg)
 
 	case tea.MouseMsg:
@@ -510,6 +595,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tabDrag = nil
 			m.cancelResize()
 			return m, nil
+		}
+		if cmd, ok := m.composerMouse(msg); ok {
+			return m, cmd
 		}
 		var cmds []tea.Cmd
 		for _, ev := range m.mouse.Handle(msg, m.at) {
@@ -525,16 +613,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	default:
-		// Anything else is a message one of the form's fields sent itself.
-		// Otherwise it is pasted text or a cursor blink for the jump box.
+		// Anything else is a message one of the form's fields sent itself,
+		// pasted text or a cursor blink for the jump box, or a message of
+		// the comment box, which gets every one of them.
+		cmd := m.composerPass(msg)
 		if m.form != nil {
-			return m.formUpdate(msg)
+			_, formCmd := m.formUpdate(msg)
+			return m, tea.Batch(formCmd, cmd)
 		}
 		if m.jumping {
-			var cmd tea.Cmd
-			m.jump, cmd = m.jump.Update(msg)
-			return m, cmd
+			var jumpCmd tea.Cmd
+			m.jump, jumpCmd = m.jump.Update(msg)
+			return m, tea.Batch(jumpCmd, cmd)
 		}
+		return m, cmd
 	}
 	return m, nil
 }
@@ -560,6 +652,13 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if m.ops.Locked() {
 		return nil
+	}
+	if m.only != "" {
+		// Nothing leads away from the one ticket.
+		switch k {
+		case "/", "tab", "shift+tab", "ctrl+w":
+			return nil
+		}
 	}
 	switch k {
 	case "q":
@@ -589,7 +688,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 			m.cancelTabDrag()
 			m.mouse.Cancel()
 		default:
-			m.activeTab = -1
+			if m.only == "" {
+				m.activeTab = -1
+			}
 		}
 	case "left":
 		if m.activeTab < 0 {
@@ -603,6 +704,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		m.closeTab(m.activeTab)
 	case "o":
 		return m.openInBrowser()
+	case "c":
+		return m.writeComment()
 	}
 	return nil
 }
@@ -613,6 +716,10 @@ func (m *Model) refresh() tea.Cmd {
 		tab := m.tabs[m.activeTab]
 		tab.loading = true
 		return m.loadTicket(tab.t.ID, tab.t.Key)
+	}
+	if m.only != "" {
+		// The one ticket has not loaded yet: try it again.
+		return m.loadByID(m.only)
 	}
 	return m.loadQueue(m.activeQueue)
 }
@@ -755,6 +862,14 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 			t := m.tabs[m.activeTab].t
 			return m.copy(t.URL, "link to "+t.Key)
 		}
+	case idComment:
+		return m.writeComment()
+	case idCommentSend:
+		return m.sendComment()
+	case idCommentDiscard:
+		m.discardComment()
+	case idCommentKind:
+		m.pickCommentKind(n)
 	case idCommentOrder:
 		err := m.prefs.SetCommentsOldestFirst(!m.prefs.CommentsOldestFirst)
 		for _, tab := range m.tabs {
@@ -838,6 +953,12 @@ func (m *Model) View() tea.View {
 	v := tea.NewView(m.comp.Render())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
+	// The comment box draws itself again when the window gets the keyboard
+	// back, which is when a terminal most often loses its picture.
+	v.ReportFocus = true
 	v.WindowTitle = "tui-q"
+	if m.only != "" {
+		v.WindowTitle = m.onlyKey()
+	}
 	return v
 }

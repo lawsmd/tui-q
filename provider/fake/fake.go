@@ -19,8 +19,16 @@ import (
 const Kind = "fake"
 
 func init() {
-	provider.Register(Kind, func(provider.Config) (provider.Provider, error) {
-		return New(300 * time.Millisecond), nil
+	provider.Register(Kind, func(cfg provider.Config) (provider.Provider, error) {
+		kinds, err := provider.PickKinds(cfg.CommentKinds,
+			provider.CommentKind{ID: provider.KindPublic, Name: "public"},
+			provider.CommentKind{ID: provider.KindInternal, Name: "internal"})
+		if err != nil {
+			return nil, fmt.Errorf("fake: %w", err)
+		}
+		p := New(300 * time.Millisecond)
+		p.Kinds = kinds
+		return p, nil
 	})
 }
 
@@ -65,6 +73,8 @@ type Provider struct {
 	// FailWrites, when set, is returned by every call that would change
 	// a ticket.
 	FailWrites error
+	// Kinds are the kinds of comment the comment box offers.
+	Kinds []provider.CommentKind
 
 	mu      sync.Mutex
 	tickets []ticket.Ticket
@@ -304,6 +314,39 @@ func (p *Provider) UpdateField(ctx context.Context, id, field string, v ticket.V
 		t.Fields[field] = v
 	}
 	t.Updated = time.Now()
+	return nil
+}
+
+// CommentFormat is Markdown, the form the fixtures hold comments in.
+func (p *Provider) CommentFormat() string { return provider.CommentMarkdown }
+
+// CommentKinds are the kinds in Kinds.
+func (p *Provider) CommentKinds() []provider.CommentKind { return p.Kinds }
+
+// AddComment adds a comment written by the first of People. An internal
+// one is marked as such.
+func (p *Provider) AddComment(ctx context.Context, id, kind, body string) error {
+	if err := p.wait(ctx); err != nil {
+		return err
+	}
+	if p.FailWrites != nil {
+		return p.FailWrites
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	t, err := p.find(id)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	if kind != provider.KindInternal {
+		kind = ""
+	}
+	// A new slice, so that a copy of the ticket handed out earlier keeps
+	// the comments it had.
+	t.Comments = append(append([]ticket.Comment(nil), t.Comments...),
+		ticket.Comment{Author: People[0], Created: now, Body: body, Kind: kind})
+	t.Updated = now
 	return nil
 }
 

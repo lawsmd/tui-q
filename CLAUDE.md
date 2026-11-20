@@ -57,13 +57,30 @@ into this repository.
 | `internal/hit` | mouse messages to gestures on layer IDs |
 | `internal/ops` | operation runner behind the status bar |
 | `internal/prefs` | settings changed from inside the interface, saved per site |
+| `internal/editor` | the comment box: a slate editor behind the `Box` interface |
+| `internal/drafts` | comments started and not sent, as Markdown, saved per site and ticket |
 | `internal/browser` | opens a URL in the default browser |
 | `scripts/check-names` | the naming guard |
 
 ## Rules for the code
 
 - Stay on the Charm stack. If a feature needs a UI library outside it, say so and get a
-  decision before writing code.
+  decision before writing code. The one exception so far is slate
+  (`github.com/lawsmd/slate`), the editor in the comment box. Only `internal/editor`
+  imports it. Do not change slate from here; report what is missing.
+- `Model.Update` passes every message it has no use for to the comment box
+  (`composerPass`), and `syncComposer` runs after every message to open the box for the
+  ticket on screen, to place it, and to cover it while a menu or form is open. A message
+  dropped on the way leaves the box frozen. The rows under the box's line hold blank
+  cells of the box's colour and never text, which would wipe out the editor's image. The
+  box scrolls with the ticket, so `placeBox` decides where it is for the frame and for
+  the editor alike. `TestCommentBoxFitsEveryPane` checks the box across pane sizes and
+  scroll positions.
+- A platform that takes comments implements `provider.Commenter` and names the format it
+  wants. The interface writes Markdown and never builds a platform's format itself.
+  `CommentKinds` returns the kinds of comment the box lets the user pick from, taken
+  from `comment_kinds` in the profile with `provider.PickKinds`, or none on a platform
+  with one kind.
 - Every frame is a tree of Lip Gloss layers. Anything clickable is a layer with an ID;
   `internal/hit` reports gestures against those IDs. Give every layer an explicit `Z`:
   layers that share a z-order are drawn in no fixed order.
@@ -82,6 +99,7 @@ into this repository.
 
 ```
 go run ./cmd/tq            run the demo against the fake provider
+go run ./cmd/tq DEMO-104   show one ticket, named by a link, key or number, and load no queue
 go run ./cmd/tq check      read every queue once and print it, with no interface
 go run ./cmd/tq order      print the tickets of each queue in working order, for an LLM agent
 go test ./...              tests

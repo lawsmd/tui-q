@@ -16,6 +16,33 @@ Early. The shell, the table view, and a read-only ticket view work against an in
 demo provider. Platform providers, boards with drag and drop, and writes are planned; see
 `docs/plan.md`.
 
+## Comments
+
+Every ticket view has a comment box after the description and before the comments,
+drawn on a grey of its own. `c` or a click in the box gives it the keyboard, and it grows
+while it is written in. `ctrl+s` or `send`
+posts the comment, `esc` gives the keyboard back to the ticket, and what was typed is
+kept as a draft until it is sent or discarded.
+
+On a platform with more than one kind of comment, the profile can turn on a choice:
+
+```toml
+[provider]
+comment_kinds = ["internal", "public"]
+```
+
+The box then shows the kinds on its line and starts on the first. A click on a kind, or
+`ctrl+k` while writing, picks the kind the comment is posted as. Jira has `public` and
+`internal`, which a service project shows as a reply to the customer and an internal
+note.
+
+The box is a [slate](https://github.com/lawsmd/slate) editor. It needs Microsoft Edge or
+Chrome on the machine, and a terminal that shows Sixel images, such as Windows Terminal
+1.22 or later. It does not open under tmux or Zellij, which drop the image.
+
+While the box is open, another program run by the same user can read and change the
+draft with `slate ls`, `slate read` and `slate edit`. Set `SLATE_LINK=0` to turn that off.
+
 ## Try it
 
 ```
@@ -42,6 +69,18 @@ go run ./cmd/tq
 A profile is a TOML file naming the platform, the queues, and the fields a ticket shows.
 `cmd/tq/profile.toml` is the demo. Set `TQ_PROFILE` to the path of another file to load it
 in place of the built-in one.
+
+## `tq LINK`
+
+```
+tq https://example.com/browse/DEMO-104
+```
+
+`tq` followed by the link, key or number of a ticket shows that ticket and nothing else.
+It loads no queue, which makes it quick to start on a site whose queues are slow. The
+ticket view is the usual one: the ticket can be moved, assigned, edited and reloaded.
+The queue tabs, the ticket tabs and the `go to ticket` box are left out, and `esc`,
+`tab`, `/` and `ctrl+w` do nothing. `q` quits.
 
 ## `tq order`
 

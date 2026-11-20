@@ -140,6 +140,9 @@ type Comment struct {
 	Created time.Time
 	// Body is Markdown, in the form Ticket.Body describes.
 	Body string
+	// Kind is a word for a comment that not everyone with the ticket can
+	// read, such as "internal". It is empty for any other comment.
+	Kind string
 }
 
 // Field returns the named field as a Value. Built-in names read the struct;

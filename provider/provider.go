@@ -4,6 +4,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 
@@ -23,6 +24,10 @@ type Config struct {
 	// DefaultProject is the project a bare ticket number is looked up in,
 	// on a platform whose ticket keys carry a project.
 	DefaultProject string `toml:"default_project"`
+	// CommentKinds turns on a choice of comment kind in the comment box,
+	// on a platform that has kinds: the IDs to offer, such as "internal"
+	// and "public", with the one a new comment starts as first.
+	CommentKinds []string `toml:"comment_kinds"`
 	// Fields maps a profile field name to the platform's field ID.
 	Fields map[string]string `toml:"-"`
 }
@@ -73,7 +78,69 @@ type Provider interface {
 	FieldLabels(ctx context.Context) (map[string]string, error)
 }
 
-// Factory builds a Provider from its config.
+// Comment formats: the forms a Commenter can take a comment body in.
+const (
+	// CommentMarkdown is Markdown text.
+	CommentMarkdown = "markdown"
+	// CommentJira is Atlassian Document Format, as JSON.
+	CommentJira = "jira"
+)
+
+// Commenter is a Provider that can add a comment to a ticket. The interface
+// offers the comment box only for a provider that implements it.
+type Commenter interface {
+	// CommentFormat names the form AddComment takes a body in: one of the
+	// Comment constants. The comment box writes Markdown and converts it
+	// to this form when the comment is sent.
+	CommentFormat() string
+	// CommentKinds lists the kinds of comment the box lets the user pick
+	// from, the one a new comment starts as first. A provider with no such
+	// choice returns none.
+	CommentKinds() []CommentKind
+	// AddComment adds a comment to a ticket. kind is the ID of one of
+	// CommentKinds, or empty when there are none.
+	AddComment(ctx context.Context, id, kind, body string) error
+}
+
+// CommentKind is one way a platform can post a comment, such as a reply
+// everyone on the ticket sees or a note kept to the team working it.
+type CommentKind struct {
+	// ID is what a profile lists in comment_kinds and what AddComment takes.
+	ID string
+	// Name is the word the comment box shows.
+	Name string
+}
+
+// The comment kinds that more than one platform has.
+const (
+	// KindPublic is a comment everyone with the ticket can read.
+	KindPublic = "public"
+	// KindInternal is a note kept to the team working the ticket.
+	KindInternal = "internal"
+)
+
+// PickKinds returns the kinds a profile asks for, in the profile's order,
+// out of the ones a platform has. It is what a provider's CommentKinds
+// answers with.
+func PickKinds(want []string, known ...CommentKind) ([]CommentKind, error) {
+	var out []CommentKind
+	for _, id := range want {
+		i := slices.IndexFunc(known, func(k CommentKind) bool { return k.ID == id })
+		if i < 0 {
+			ids := make([]string, len(known))
+			for j, k := range known {
+				ids[j] = k.ID
+			}
+			return nil, fmt.Errorf("[provider] comment_kinds: unknown kind %q (have %v)", id, ids)
+		}
+		if !slices.Contains(out, known[i]) {
+			out = append(out, known[i])
+		}
+	}
+	return out, nil
+}
+
+// Factorybuilds a Provider from its config.
 type Factory func(Config) (Provider, error)
 
 var (

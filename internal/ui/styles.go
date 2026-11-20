@@ -71,7 +71,18 @@ type Styles struct {
 	// CommentBorder frames one comment, and CommentAuthor names who wrote it.
 	// Both are drawn in the commenter's colour when Commenters has one.
 	CommentBorder lipgloss.Style
-	CommentAuthor lipgloss.Style
+	// ComposerBack is the colour the comment box is drawn on, as "#rrggbb":
+	// a little lighter than the terminal's own, which shows where the box
+	// is. Composer is the line of the box, and ComposerFocus its name while
+	// the box has the keyboard.
+	ComposerBack  string
+	Composer      lipgloss.Style
+	ComposerFocus lipgloss.Style
+	// ComposerKind is a kind of comment the box can post, and
+	// ComposerKindOn the kind it will post.
+	ComposerKind   lipgloss.Style
+	ComposerKindOn lipgloss.Style
+	CommentAuthor  lipgloss.Style
 	// Commenters are the colours given to the people who commented on a
 	// ticket, in the order they first commented. The colours are used again
 	// from the start when a ticket has more commenters than colours.
@@ -93,6 +104,10 @@ type Styles struct {
 	StatusBusy  lipgloss.Style
 	StatusError lipgloss.Style
 }
+
+// composerBack is the stock colour of the comment box: a grey that stands
+// out from a black terminal and still takes the terminal's light text.
+const composerBack = "#34363d"
 
 // DefaultStyles is the stock look.
 func DefaultStyles() Styles {
@@ -157,10 +172,15 @@ func DefaultStyles() Styles {
 		Label: lipgloss.NewStyle().Foreground(accent),
 		Faint: lipgloss.NewStyle().Foreground(dim),
 
-		Rule:          lipgloss.NewStyle().Foreground(dim),
-		Section:       lipgloss.NewStyle().Foreground(accent).Bold(true),
-		CommentBorder: lipgloss.NewStyle().Foreground(dim),
-		CommentAuthor: lipgloss.NewStyle().Foreground(text).Bold(true),
+		Rule:           lipgloss.NewStyle().Foreground(dim),
+		Section:        lipgloss.NewStyle().Foreground(accent).Bold(true),
+		CommentBorder:  lipgloss.NewStyle().Foreground(dim),
+		ComposerBack:   composerBack,
+		Composer:       lipgloss.NewStyle().Background(lipgloss.Color(composerBack)).Foreground(text),
+		ComposerFocus:  lipgloss.NewStyle().Background(lipgloss.Color(composerBack)).Foreground(accent).Bold(true),
+		ComposerKind:   lipgloss.NewStyle().Background(lipgloss.Color(composerBack)).Foreground(dim),
+		ComposerKindOn: lipgloss.NewStyle().Background(accent).Foreground(onLight).Bold(true),
+		CommentAuthor:  lipgloss.NewStyle().Foreground(text).Bold(true),
 		// Pastels in colour-wheel order of rank: the primaries, then the
 		// secondaries, then the tertiaries, each tertiary placed away from
 		// the one before it.

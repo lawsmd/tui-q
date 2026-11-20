@@ -207,6 +207,12 @@ func TestFrameMatchesPaneAtEverySize(t *testing.T) {
 	m.drag = nil
 	m.tabDrag = &tabDrag{}
 	checkFrames(t, m, "tab drag")
+
+	m, eds := newCommenting(t, 110, 30, Options{})
+	openBox(t, m, eds)
+	checkFrames(t, m, "ticket with the comment box")
+	send(t, m, key('c'))
+	checkFrames(t, m, "ticket with the comment box being written in")
 }
 
 func TestDraggedTabChangesPlaces(t *testing.T) {
@@ -264,6 +270,28 @@ func TestDraggedTabChangesPlaces(t *testing.T) {
 	send(t, m, tea.MouseReleaseMsg{X: first.x, Y: y, Button: tea.MouseLeft})
 	if got, want := keys(), c+" "+a+" "+b; got != want || m.tabDrag != nil {
 		t.Fatalf("after the drop: %s, want %s", got, want)
+	}
+}
+
+func TestCommentsSectionSaysWhenThereAreNone(t *testing.T) {
+	m := newModel(t, 110, 60)
+	clickLayer(t, m, layerID(idRow, 1))
+	tab := m.tabs[m.activeTab]
+	bare := tab.t
+	bare.Comments = nil
+	tab.set(bare)
+
+	tab.loading = true
+	if out := screen(m); !strings.Contains(out, "Comments") || !strings.Contains(out, "loading...") {
+		t.Fatalf("a loading ticket does not say its comments are on the way\n%s", out)
+	}
+	tab.loading = false
+	out := screen(m)
+	if !strings.Contains(out, "No comments yet.") {
+		t.Fatalf("no empty comments section\n%s", out)
+	}
+	if strings.Contains(out, "newest first") {
+		t.Errorf("the order control is drawn with no comments to order\n%s", out)
 	}
 }
 

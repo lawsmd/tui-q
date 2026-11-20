@@ -418,3 +418,59 @@ func TestRawSendsCredentialsOnlyToItsOwnSite(t *testing.T) {
 		t.Fatalf("missing file: %v", err)
 	}
 }
+
+func TestAddCommentPostsTheDocument(t *testing.T) {
+	s := newServer(t)
+	p := newProvider(s)
+	var c provider.Commenter = p
+	if c.CommentFormat() != provider.CommentJira {
+		t.Fatalf("format = %q", c.CommentFormat())
+	}
+	doc := `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Done"}]}]}`
+	if err := c.AddComment(context.Background(), "DEMO-7", "", doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.requests) != 1 || s.requests[0] != "POST /rest/api/3/issue/DEMO-7/comment" {
+		t.Fatalf("requests = %v", s.requests)
+	}
+	if want := `{"body":` + doc + `}`; s.bodies[0] != want {
+		t.Errorf("body = %s, want %s", s.bodies[0], want)
+	}
+
+	// Text that is not a document is refused before any request.
+	if err := c.AddComment(context.Background(), "DEMO-7", "", "Done"); err == nil || len(s.requests) != 1 {
+		t.Fatalf("a body that is not JSON: err=%v, requests=%v", err, s.requests)
+	}
+}
+
+func TestAddCommentSendsTheKind(t *testing.T) {
+	s := newServer(t)
+	p := newProvider(s)
+	if len(p.CommentKinds()) != 0 {
+		t.Fatalf("kinds with none turned on: %v", p.CommentKinds())
+	}
+	if err := p.SetCommentKinds([]string{"internal", "public"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.CommentKinds(); len(got) != 2 || got[0].ID != provider.KindInternal || got[1].ID != provider.KindPublic {
+		t.Fatalf("kinds = %v", got)
+	}
+	if err := p.SetCommentKinds([]string{"secret"}); err == nil {
+		t.Fatal("an unknown kind was accepted")
+	}
+
+	doc := `{"type":"doc","version":1,"content":[]}`
+	for kind, internal := range map[string]string{provider.KindInternal: "true", provider.KindPublic: "false"} {
+		if err := p.AddComment(context.Background(), "DEMO-7", kind, doc); err != nil {
+			t.Fatal(err)
+		}
+		want := `{"body":` + doc + `,"properties":[{"key":"sd.public.comment","value":{"internal":` + internal + `}}]}`
+		if got := s.bodies[len(s.bodies)-1]; got != want {
+			t.Errorf("%s: body = %s, want %s", kind, got, want)
+		}
+	}
+	n := len(s.requests)
+	if err := p.AddComment(context.Background(), "DEMO-7", "secret", doc); err == nil || len(s.requests) != n {
+		t.Fatalf("an unknown kind: err=%v", err)
+	}
+}

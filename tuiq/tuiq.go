@@ -11,6 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lawsmd/tui-q/ext"
+	"github.com/lawsmd/tui-q/internal/drafts"
+	"github.com/lawsmd/tui-q/internal/editor"
 	"github.com/lawsmd/tui-q/internal/prefs"
 	"github.com/lawsmd/tui-q/internal/ui"
 	"github.com/lawsmd/tui-q/profile"
@@ -45,6 +47,7 @@ func WithActions(actions ...ext.Action) Option {
 // usage is printed by "tq help" and with the error for an unknown command.
 const usage = `usage:
   tq                                  start the interface
+  tq LINK                             show one ticket, named by a link, key or number
   tq order [--queue NAME] [--limit N] print the tickets of each queue in working order
   tq check                            read every queue once and print what came back
   tq help                             print this
@@ -53,7 +56,9 @@ const usage = `usage:
 // Run starts the interface and returns when the user quits. The program's
 // first argument can name a command that runs without the interface:
 // "order" prints the working order, "check" tests a profile, and "help"
-// prints the usage. Any other argument is an error, so that a mistyped
+// prints the usage. Any other argument has to name a ticket, by link, key
+// or number: the interface then shows that ticket alone and loads no
+// queue. An argument that names neither is an error, so that a mistyped
 // command does not start a full-screen program.
 func Run(opts ...Option) error {
 	var cfg config
@@ -65,13 +70,9 @@ func Run(opts ...Option) error {
 		command, args = os.Args[1], os.Args[2:]
 	}
 	switch command {
-	case "", "check", "order":
 	case "help", "-h", "-help", "--help":
 		fmt.Print(usage)
 		return nil
-	default:
-		fmt.Fprint(os.Stderr, usage)
-		return fmt.Errorf("no command named %q", command)
 	}
 	if cfg.profileText == "" {
 		return errors.New("tuiq: no profile given; pass WithProfile")
@@ -93,9 +94,41 @@ func Run(opts ...Option) error {
 	// Settings changed in the interface are kept per site. Without a place
 	// to keep them they last until the program exits.
 	uiOpts := ui.Options{Actions: cfg.actions}
-	if path, err := prefs.Path(prof.Provider.Kind + " " + prof.Provider.BaseURL); err == nil {
+	if command != "" {
+		id, err := ticketArg(prov, command, args)
+		if err != nil {
+			fmt.Fprint(os.Stderr, usage)
+			return err
+		}
+		uiOpts.Ticket = id
+	}
+	site := prof.Provider.Kind + " " + prof.Provider.BaseURL
+	if path, err := prefs.Path(site); err == nil {
 		uiOpts.Prefs = prefs.Open(path)
 	}
-	_, err = tea.NewProgram(ui.New(prof, prov, uiOpts)).Run()
+	if dir, err := drafts.Dir(site); err == nil {
+		uiOpts.Drafts = drafts.Open(dir)
+	}
+	// The comment box is an editor drawn by a browser, which is started
+	// when the first ticket is shown and stopped here.
+	uiOpts.OpenEditor, uiOpts.WarmEditor = editor.Open, editor.Warm
+	defer editor.Shutdown()
+	model := ui.New(prof, prov, uiOpts)
+	_, err = tea.NewProgram(model).Run()
+	model.Close()
 	return err
+}
+
+// ticketArg reads a first argument that is not a command as the link, key
+// or number of a ticket, and returns the ticket's ID. Nothing may follow
+// it on the command line.
+func ticketArg(prov provider.Provider, arg string, rest []string) (string, error) {
+	id, err := prov.Resolve(arg)
+	if err != nil {
+		return "", fmt.Errorf("no command named %q, and it names no ticket: %w", arg, err)
+	}
+	if len(rest) > 0 {
+		return "", fmt.Errorf("unexpected argument %q after the ticket", rest[0])
+	}
+	return id, nil
 }

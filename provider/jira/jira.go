@@ -3,6 +3,7 @@ package jira
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -43,6 +44,8 @@ type Provider struct {
 	fields map[string]string
 	// project is the project a bare issue number is looked up in.
 	project string
+	// kinds are the kinds of comment the profile turned on.
+	kinds []provider.CommentKind
 
 	// meta remembers, per issue and Jira field ID, what the edit and
 	// transition screens said about each field.
@@ -70,6 +73,9 @@ func New(cfg provider.Config) (*Provider, error) {
 	}
 	p := NewProvider(NewClient(cfg.BaseURL, user, token), cfg.Fields)
 	p.project = cfg.DefaultProject
+	if err := p.SetCommentKinds(cfg.CommentKinds); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
@@ -256,6 +262,56 @@ func (p *Provider) UpdateField(ctx context.Context, id, field string, v ticket.V
 	return p.client.Do(ctx, http.MethodPut, "/rest/api/3/issue/"+url.PathEscape(id), body, nil)
 }
 
+// CommentFormat is Atlassian Document Format.
+func (p *Provider) CommentFormat() string { return provider.CommentJira }
+
+// commentKinds are the kinds of comment a service project has: a reply the
+// customer sees and a note the customer does not.
+var commentKinds = []provider.CommentKind{
+	{ID: provider.KindPublic, Name: "public"},
+	{ID: provider.KindInternal, Name: "internal"},
+}
+
+// publicProperty is the comment property a service project reads to tell
+// a reply to the customer from an internal note.
+const publicProperty = "sd.public.comment"
+
+// CommentKinds are the kinds the profile turned on.
+func (p *Provider) CommentKinds() []provider.CommentKind { return p.kinds }
+
+// SetCommentKinds turns on the kinds of comment named, the default first.
+func (p *Provider) SetCommentKinds(ids []string) error {
+	kinds, err := provider.PickKinds(ids, commentKinds...)
+	if err != nil {
+		return fmt.Errorf("jira: %w", err)
+	}
+	p.kinds = kinds
+	return nil
+}
+
+// AddComment adds a comment to an issue. body is an Atlassian Document
+// Format document as JSON. A kind is sent as the property a service
+// project reads; an issue of any other project keeps the property and
+// shows the comment as it shows every other.
+func (p *Provider) AddComment(ctx context.Context, id, kind, body string) error {
+	if !json.Valid([]byte(body)) {
+		return errors.New("the comment is not a valid document")
+	}
+	req := map[string]any{"body": json.RawMessage(body)}
+	switch kind {
+	case "":
+	case provider.KindPublic, provider.KindInternal:
+		req["properties"] = []map[string]any{{
+			"key":   publicProperty,
+			"value": map[string]bool{"internal": kind == provider.KindInternal},
+		}}
+	default:
+		return fmt.Errorf("jira has no comment kind %q", kind)
+	}
+	path := "/rest/api/3/issue/" + url.PathEscape(id) + "/comment"
+	return p.client.Do(ctx, http.MethodPost, path, req, nil)
+}
+
 // fieldID maps a profile field name to the Jira field ID.
 func (p *Provider) fieldID(name string) string {
 	switch name {
@@ -309,14 +365,22 @@ func (p *Provider) toTicket(is issue) ticket.Ticket {
 				} `json:"author"`
 				Created json.RawMessage `json:"created"`
 				Body    json.RawMessage `json:"body"`
+				// Public is false on an internal note of a service
+				// project, and absent outside one.
+				Public *bool `json:"jsdPublic"`
 			} `json:"comments"`
 		}
 		if json.Unmarshal(raw, &block) == nil {
 			for _, c := range block.Comments {
+				kind := ""
+				if c.Public != nil && !*c.Public {
+					kind = "internal"
+				}
 				t.Comments = append(t.Comments, ticket.Comment{
 					Author:  c.Author.DisplayName,
 					Created: parseTime(c.Created),
 					Body:    adfToMarkdown(c.Body),
+					Kind:    kind,
 				})
 			}
 		}

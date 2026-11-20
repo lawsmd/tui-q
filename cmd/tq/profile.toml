@@ -3,6 +3,8 @@
 
 [provider]
 kind = "fake"
+# The comment box offers these kinds of comment, and starts on the first.
+comment_kinds = ["public", "internal"]
 
 [[queue]]
 name = "Unassigned"

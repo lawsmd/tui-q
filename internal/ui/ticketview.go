@@ -20,6 +20,9 @@ const (
 	sideBySideWidth = 90
 	// titleRows is the most lines the title is given.
 	titleRows = 3
+	// minColumnRows is the fewest rows the main column has under a title
+	// that stays in place.
+	minColumnRows = 4
 )
 
 // editMark follows the label of a field that can be clicked to change it.
@@ -42,10 +45,14 @@ type ticketTab struct {
 
 	// main caches the rendered main column for one width, with the place
 	// of each clickable label in it. Rendering Markdown on every frame
-	// would make scrolling slow.
-	main       []string
-	mainLabels []labelLine
-	mainWidth  int
+	// would make scrolling slow. mainBox is the line the comment box goes
+	// before: the first after the fields. mainLoading is whether the ticket was
+	// still loading then, which changes what an empty comments section says.
+	main        []string
+	mainLabels  []labelLine
+	mainBox     int
+	mainWidth   int
+	mainLoading bool
 
 	// fields are the names of the fields that can be clicked in the last
 	// frame drawn. A field layer's index points into it.
@@ -80,7 +87,8 @@ func (tab *ticketTab) shows(name string) bool {
 }
 
 // layers draws the ticket: a row of buttons, then the title, the main
-// column and the sidebar, with a clickable layer over the label of each
+// column and the sidebar, the comment box after the fields of the main
+// column, with a clickable layer over the label of each
 // field that can be changed. In a wide pane the title and the sidebar stay
 // in place while the main column scrolls. In a narrow one the title, the
 // sidebar and the main column scroll as one column.
@@ -114,7 +122,7 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 		layers = append(layers, lipgloss.NewLayer(s.Faint.Render("loading...")).X(x).Y(a.y).Z(zScenery))
 	}
 
-	body := area{x: a.x + 1, y: a.y + 2, w: a.w - 2, h: a.h - 2}
+	body := ticketBody(a)
 	tab.fields = nil
 	tab.sideX = 0
 	if body.h <= 0 || body.w <= 0 {
@@ -147,11 +155,60 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 		return offset
 	}
 
-	if body.w < sideBySideWidth {
-		lines := tab.titleLines(m, body.w)
-		var labels []labelLine
+	c, lines, labels, head, at := tab.mainColumn(m, a)
+	if len(head) > 0 {
+		layers = append(layers, lipgloss.NewLayer(strings.Join(head, "\n")).X(body.x).Y(body.y).Z(zScenery))
+	}
+	if c.h <= 0 {
+		return layers
+	}
+
+	// The comment box has its lines among those of the column, left blank
+	// here, and is drawn over the ones in view.
+	if box := tab.placeBox(m, c, len(lines), at); box.on {
+		lines = slices.Concat(lines[:at], make([]string, box.rows+2), lines[at:])
+		labels = slices.Clone(labels)
+		for i := range labels {
+			if labels[i].line >= at {
+				labels[i].line += box.rows + 2
+			}
+		}
+		layers = append(layers, m.composerLayers(tab.t, box)...)
+	}
+	tab.offset = column(c, lines, labels, tab.offset)
+	if head == nil {
+		return layers
+	}
+
+	// A space, the dividing line, a space, the sidebar.
+	divider := strings.TrimSuffix(strings.Repeat(s.Rule.Render("│")+"\n", c.h), "\n")
+	layers = append(layers, lipgloss.NewLayer(divider).X(c.x+c.w+1).Y(c.y).Z(zScenery))
+
+	tab.sideX = c.x + c.w + 3
+	right, rightLabels := tab.sidebarLines(m, sidebarWidth)
+	tab.sideOffset = column(area{tab.sideX, c.y, sidebarWidth, c.h}, right, rightLabels, tab.sideOffset)
+	return layers
+}
+
+// mainColumn is the scrolling column that holds the main fields of the
+// ticket: its area, its lines and labels, and the line the comment box
+// goes before. In a narrow pane the column is the whole body, and head is
+// nil. In a wide one head is the title, which stays in place over the
+// column, and the sidebar is beside it. The area has no height when the
+// pane has no room for a ticket.
+func (tab *ticketTab) mainColumn(m *Model, a area) (c area, lines []string, labels []labelLine, head []string, at int) {
+	body := ticketBody(a)
+	if body.h <= 0 || body.w <= 0 {
+		return area{}, nil, nil, nil, -1
+	}
+	title := tab.titleLines(m, body.w)
+	// A pane too short to hold the title over a column of its own scrolls
+	// the title with the rest, as a narrow one does.
+	if body.w < sideBySideWidth || body.h-len(title) < minColumnRows {
+		lines = title
 		side, sideLabels := tab.sidebarLines(m, body.w)
 		main, mainLabels := tab.mainLines(m, body.w)
+		at = len(lines) + len(side) + tab.mainBox
 		for _, part := range []struct {
 			lines  []string
 			labels []labelLine
@@ -162,31 +219,15 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 			}
 			lines = append(lines, part.lines...)
 		}
-		tab.offset = column(body, lines, labels, tab.offset)
-		return layers
+		return body, lines, labels, nil, at
 	}
-
-	head := tab.titleLines(m, body.w)
-	head = head[:min(len(head), body.h)]
-	if len(head) > 0 {
-		layers = append(layers, lipgloss.NewLayer(strings.Join(head, "\n")).X(body.x).Y(body.y).Z(zScenery))
+	head = title
+	if head == nil {
+		head = []string{}
 	}
-	rest := area{x: body.x, y: body.y + len(head), w: body.w, h: body.h - len(head)}
-	if rest.h <= 0 {
-		return layers
-	}
-	// The main column, a space, the dividing line, a space, the sidebar.
-	mainW := rest.w - sidebarWidth - 3
-	left, leftLabels := tab.mainLines(m, mainW)
-	tab.offset = column(area{rest.x, rest.y, mainW, rest.h}, left, leftLabels, tab.offset)
-
-	divider := strings.TrimSuffix(strings.Repeat(s.Rule.Render("│")+"\n", rest.h), "\n")
-	layers = append(layers, lipgloss.NewLayer(divider).X(rest.x+mainW+1).Y(rest.y).Z(zScenery))
-
-	tab.sideX = rest.x + mainW + 3
-	right, rightLabels := tab.sidebarLines(m, sidebarWidth)
-	tab.sideOffset = column(area{tab.sideX, rest.y, sidebarWidth, rest.h}, right, rightLabels, tab.sideOffset)
-	return layers
+	c = area{x: body.x, y: body.y + len(head), w: body.w - sidebarWidth - 3, h: body.h - len(head)}
+	lines, labels = tab.mainLines(m, c.w)
+	return c, lines, labels, head, tab.mainBox
 }
 
 // pad extends a styled line with spaces to w cells.
@@ -230,7 +271,7 @@ func (tab *ticketTab) titleLines(m *Model, w int) []string {
 // rule each, then the comments when the profile asks for them. The title
 // is drawn by titleLines.
 func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
-	if tab.main != nil && tab.mainWidth == w {
+	if tab.main != nil && tab.mainWidth == w && tab.mainLoading == tab.loading {
 		return tab.main, tab.mainLabels
 	}
 	s := m.styles
@@ -260,6 +301,16 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 			lines = append(lines, s.markdownLines(value, w)...)
 		}
 		lines = append(lines, "")
+	}
+	tab.mainBox = len(lines)
+	if m.prof.Ticket.Comments && len(tab.t.Comments) == 0 {
+		// A ticket opened from a queue carries no comments until its full
+		// load returns, so say so rather than claim there are none.
+		empty := "No comments yet."
+		if tab.loading {
+			empty = "loading..."
+		}
+		lines = append(lines, s.rule("Comments", w), "", s.Faint.Render(empty), "")
 	}
 	if m.prof.Ticket.Comments && len(tab.t.Comments) > 0 {
 		oldestFirst := m.prefs.CommentsOldestFirst
@@ -291,6 +342,9 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 			}
 			title := author.Render(c.Author) +
 				s.Faint.Render(" · "+c.Created.Local().Format("2006-01-02 15:04"))
+			if c.Kind != "" {
+				title += s.Faint.Render(" · ") + s.Label.Render(c.Kind)
+			}
 			text := unindent(s.markdownLines(c.Body, w-4+markdownMargin), markdownMargin)
 			for i, line := range text {
 				text[i] = pad(line, w-4)
@@ -298,7 +352,7 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 			lines = append(lines, titledBox(title, text, w, border)...)
 		}
 	}
-	tab.main, tab.mainLabels, tab.mainWidth = lines, labels, w
+	tab.main, tab.mainLabels, tab.mainWidth, tab.mainLoading = lines, labels, w, tab.loading
 	return lines, labels
 }
 

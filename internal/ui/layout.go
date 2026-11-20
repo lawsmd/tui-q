@@ -39,23 +39,21 @@ func (m *Model) compose() *lipgloss.Compositor {
 
 	// A profile with one queue has one tab row: the queue, then the open
 	// tickets. With more queues the tickets have a row of their own.
-	queueTabs, end, limit := m.queueTabRow(w)
-	root.AddLayers(queueTabs...)
-	top := 1
-	if len(m.queues) == 1 {
+	if m.only != "" {
+		root.AddLayers(m.onlyRow(w)...)
+	} else if queueTabs, end, limit := m.queueTabRow(w); len(m.queues) == 1 {
+		root.AddLayers(queueTabs...)
 		root.AddLayers(m.ticketTabs(end+tabGap, 0, limit)...)
 	} else {
-		top = 2
+		root.AddLayers(queueTabs...)
 		root.AddLayers(lipgloss.NewLayer(m.styles.SubTabRow.Render(blank(w, 1))).Y(1).Z(zScenery))
 		root.AddLayers(m.ticketTabs(tabGap, 1, w)...)
 	}
 
-	// One blank line sets the tab rows off from what is under them.
-	top++
-	content := area{x: 0, y: top, w: w, h: h - top - 1}
+	content := m.contentArea()
 	if m.activeTab >= 0 {
 		root.AddLayers(m.tabs[m.activeTab].layers(m, content)...)
-	} else {
+	} else if m.only == "" {
 		root.AddLayers(m.queues[m.activeQueue].layers(m, content)...)
 	}
 
@@ -72,6 +70,39 @@ func (m *Model) compose() *lipgloss.Compositor {
 		}
 	}
 	return lipgloss.NewCompositor(root)
+}
+
+// contentArea is the part of the pane between the tab rows and the status
+// bar. One blank line sets the tab rows off from what is under them.
+func (m *Model) contentArea() area {
+	top := 2
+	if m.only == "" && len(m.queues) != 1 {
+		top = 3
+	}
+	return area{x: 0, y: top, w: m.w, h: m.h - top - 1}
+}
+
+// onlyKey is the key of the one ticket the program was started to show,
+// or its ID until the ticket has loaded.
+func (m *Model) onlyKey() string {
+	if m.activeTab >= 0 && m.tabs[m.activeTab].t.Key != "" {
+		return m.tabs[m.activeTab].t.Key
+	}
+	return m.only
+}
+
+// onlyRow is the top row of a program started on one ticket: the key of
+// the ticket and a refresh button.
+func (m *Model) onlyRow(w int) []*lipgloss.Layer {
+	s := m.styles
+	layers := []*lipgloss.Layer{lipgloss.NewLayer(s.TabRow.Render(blank(w, 1))).Z(zScenery)}
+	button := s.Button.Render("refresh")
+	buttonX := w - lipgloss.Width(button)
+	layers = append(layers, lipgloss.NewLayer(button).ID(idRefresh).X(buttonX).Z(zItem))
+	if key := s.TabActive.Render(m.onlyKey()); lipgloss.Width(key) < buttonX {
+		layers = append(layers, lipgloss.NewLayer(key).Z(zItem))
+	}
+	return layers
 }
 
 // queueTabRow is the top row: one tab per queue and a refresh button. It

@@ -91,6 +91,12 @@ func (m *Model) jumpTo(text string) tea.Cmd {
 			return nil
 		}
 	}
+	return m.loadByID(id)
+}
+
+// loadByID loads a ticket that no queue has supplied, and shows it in a
+// tab once it has loaded.
+func (m *Model) loadByID(id string) tea.Cmd {
 	return m.start("Loading "+id, false, func(ctx context.Context) (tea.Msg, error) {
 		t, err := m.prov.Get(ctx, id)
 		if err != nil {
@@ -104,6 +110,7 @@ func (m *Model) jumpTo(text string) tea.Cmd {
 // showLoaded shows a ticket from the jump box in a tab of its own, or in
 // the tab it already has.
 func (m *Model) showLoaded(msg jumpedMsg) {
+	m.warmEditor()
 	for i, tab := range m.tabs {
 		if tab.t.ID == msg.t.ID {
 			tab.set(msg.t)

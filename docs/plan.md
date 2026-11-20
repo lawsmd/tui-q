@@ -16,7 +16,9 @@ looks.
   kept in local git with no remote.
 - Windows, macOS and Linux.
 - Writes in the first version: status transitions, assignment and field edits, custom
-  actions. Comments are read-only; every ticket has "open in browser".
+  actions. Every ticket has "open in browser".
+- Comments can be added from the ticket view. Existing comments cannot be edited: the
+  ticket model holds no ID for a comment and not the body as the platform stores it.
 - A single click opens a ticket. The context menu opens from a right-click, a
   middle-click, or the menu button on every row and card. The button is there because a
   terminal multiplexer can keep right-clicks for its own menus.
@@ -42,7 +44,8 @@ The Jira client has `Do` for JSON and `Raw` for files.
 
 - `[provider]`: kind, base URL, names of the credential environment variables.
   `default_project` names the project a bare ticket number is looked up in, on a
-  platform whose ticket keys carry a project.
+  platform whose ticket keys carry a project. `comment_kinds` lists the kinds of
+  comment the comment box offers, the default first. Jira has `public` and `internal`.
 - `[[queue]]`: name, query in the platform's own language, `layout` (`table` or `board`),
   columns or card fields, refresh interval. A board names the field its lanes group by.
   Dropping a card on a status lane runs a transition; on any other lane, a field edit.
@@ -117,6 +120,43 @@ The Jira client has `Do` for JSON and `Raw` for files.
   the write fails, or the platform asks for values first, the card goes back. A move
   that requires fields opens a form for them.
 - After every write the ticket is read back and every queue reloads.
+- Every ticket view has a comment box in its main column, after the fields and before
+  the comments, and it scrolls with them. The box is one line with its name and buttons, then the rows of a
+  slate editor (`github.com/lawsmd/slate`), which a headless browser draws and the
+  terminal shows as a Sixel image. `internal/editor` is the only package that imports it.
+- The line and the editor are drawn on one grey (`Styles.ComposerBack`), lighter than a
+  dark terminal's own colour, which marks the box as a place to click. The line carries
+  no words on how to use it.
+- Idle, the editor has three rows. Written in, it has half the rows of the column,
+  fourteen at most, and the ticket scrolls until the whole box is in view. The editor is
+  placed over the rows of the box that are in view, and stops drawing when none is.
+- The rows of the editor are drawn as blank cells of the box's grey. The editor's image
+  goes over them, and they clear what the image leaves where the box was before a scroll.
+- In a wide pane too short to keep the title in place over the main column, the title
+  and the sidebar scroll with the column as they do in a narrow pane.
+- The wheel over the box scrolls the ticket, and scrolls the editor while the box has the
+  keyboard.
+- `c`, a click in the box or a click on its line gives it the keyboard, and `esc` or a
+  click elsewhere takes it away. While the box has the keyboard every key but `esc`,
+  `ctrl+s` and `ctrl+k` is the editor's, `ctrl+c` included, which copies.
+- When the editor cannot open, as under tmux, the line says why and `c` tries again.
+- `ctrl+s` or the `send` button posts the comment as a write. The provider names the
+  format it takes (`provider.Commenter`), and the editor converts its Markdown to that
+  format when the comment is sent. When the write fails the box and its text stay.
+- A platform can have kinds of comment, such as a public reply and an internal note.
+  `comment_kinds` in `[provider]` lists the kinds the box offers, and a new comment
+  starts as the first. The line of the box shows them after its name with the chosen
+  one marked. A click on a kind picks it, and so does `ctrl+k` while the box has the
+  keyboard. The choice is kept per ticket until the comment is sent or discarded, or
+  `tq` exits. With one kind listed every comment is that kind and the line shows no
+  choice. A comment not everyone can read has its kind after its date in the list.
+- What is typed is kept as a draft per ticket, as Markdown, in the user's configuration
+  directory. Leaving the ticket or quitting closes the box and keeps the draft. `discard`
+  removes it, and so does sending.
+- One editor exists at a time, for the ticket on screen. Showing another ticket closes
+  it and opens one for that ticket. A menu or a form shown over it stops it drawing
+  until the menu or form closes.
+- The browser behind the editor starts when the first ticket is shown.
 - An instance action runs as a write. When it has questions, a form asks them first and
   cancelling the form cancels the action. The status bar shows the step the action last
   reported. An action may run for five minutes unless it sets its own limit.
@@ -137,6 +177,12 @@ The Jira client has `Do` for JSON and `Raw` for files.
 Outside the phases: `tq order` prints the tickets of each queue in working order for an
 LLM agent, as key, status and title. It shares the bucket and lane grouping with the
 interface through `internal/arrange`.
+
+Also outside the phases: `tq LINK` starts the interface on one ticket, named by a link, a
+key or a number that the provider's `Resolve` reads. `ui.Options.Ticket` carries the ID.
+The model then loads the account, the field names and that ticket, and never a queue. The
+top row holds the ticket's key and the refresh button, and no key or layer leads to a
+queue or to another ticket.
 
 ## Verification
 

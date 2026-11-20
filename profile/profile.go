@@ -103,7 +103,7 @@ func (q *Queue) OwnQueries() bool {
 type TicketView struct {
 	Main    []string `toml:"main"`
 	Sidebar []string `toml:"sidebar"`
-	// Comments shows the read-only comment section when true.
+	// Comments shows the comment section when true.
 	Comments bool `toml:"comments"`
 }
 
