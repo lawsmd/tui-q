@@ -104,7 +104,9 @@ fix and extend slate when tui-q needs it, so the work does not pass back and for
 between agents in two projects.
 
 - Find where slate is cloned on the machine before starting (the agent's memory records
-  it). Work in that clone, commit there, and push it to its own remote.
+  it). Work in that clone, commit there, and push it to its own remote. On a machine
+  with no clone, clone it beside this repository with
+  `gh repo clone lawsmd/slate ../slate` and give it the same repo-local git identity.
 - Change slate only in ways that make sense for slate as a general editor: a bug fix, or
   a feature another program embedding slate could use too.
 - A problem that only tui-q's use of slate has is solved in `internal/editor`, not in
@@ -112,6 +114,10 @@ between agents in two projects.
 - After pushing a slate change, update the dependency here with
   `go get github.com/lawsmd/slate@<commit>` and `go mod tidy`. Do not commit a `replace`
   directive that points at a local clone.
+- To try a slate change in `tq` before it is pushed, add
+  `replace github.com/lawsmd/slate => <clone>` to the `go.mod` of the module being
+  built, an instance or this one, and take it out afterwards.
+- Push slate before pushing a tui-q commit that needs the new slate version.
 
 ## Commands
 
