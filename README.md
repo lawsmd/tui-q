@@ -38,11 +38,32 @@ note. Azure DevOps has one kind, takes the comment as Markdown, and offers the
 organisation's users after `@`.
 
 The box is a [slate](https://github.com/lawsmd/slate) editor. It needs Microsoft Edge or
-Chrome on the machine, and a terminal that shows Sixel images, such as Windows Terminal
-1.22 or later. It does not open under tmux or Zellij, which drop the image.
+Chrome on the machine.
 
 While the box is open, another program run by the same user can read and change the
 draft with `slate ls`, `slate read` and `slate edit`. Set `SLATE_LINK=0` to turn that off.
+
+### Terminals and multiplexers
+
+slate draws the box as a Sixel image, so where the box works depends on what passes that
+image to the screen.
+
+| Where `tq` runs | Comment box |
+|---|---|
+| Windows Terminal 1.22 or later | works |
+| Herdr 0.8.2 or 0.9.5, inside Windows Terminal | works; slate writes the image to the terminal behind Herdr |
+| tmux, Zellij | does not open; they drop the image |
+
+In Herdr, set this in `config.toml` and apply it with `herdr server reload-config`.
+Without it the box blinks when the window comes back to the front:
+
+```toml
+[ui]
+redraw_on_focus_gained = false
+```
+
+The rest of `tq` runs in any terminal that reports mouse events. slate's README says how
+to add another multiplexer.
 
 ## Try it
 

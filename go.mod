@@ -11,7 +11,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/alecthomas/chroma/v2 v2.14.0
 	github.com/charmbracelet/x/ansi v0.11.9
-	github.com/lawsmd/slate v0.0.0-20261120002553-97667a819d16
+	github.com/lawsmd/slate v0.0.0-20261120144024-6d093ea9ee98
 	golang.org/x/net v0.39.0
 )
 

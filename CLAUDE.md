@@ -77,6 +77,11 @@ into this repository.
   box scrolls with the ticket, so `placeBox` decides where it is for the frame and for
   the editor alike. `TestCommentBoxFitsEveryPane` checks the box across pane sizes and
   scroll positions.
+- tui-q gives the comment box cells counted from the top left of its own window and
+  knows nothing about the terminal or multiplexer it runs in. Code for one terminal or
+  multiplexer (where the pane sits on the screen, the pixel size of a cell, how the
+  image reaches the screen) belongs in slate, behind `bubble.Painter` and `bubble.Host`.
+  `README.md` lists where the box works; update it when slate gains a host.
 - A platform that takes comments implements `provider.Commenter` and names the format it
   wants. The interface writes Markdown and never builds a platform's format itself.
   `CommentKinds` returns the kinds of comment the box lets the user pick from, taken
