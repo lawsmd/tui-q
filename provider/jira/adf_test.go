@@ -80,7 +80,7 @@ func TestADFToMarkdown(t *testing.T) {
 		{"empty", ``, ""},
 	}
 	for _, c := range cases {
-		if got := adfToMarkdown(json.RawMessage(c.adf)); got != c.want {
+		if got := adfToMarkdown(json.RawMessage(c.adf), files{}); got != c.want {
 			t.Errorf("%s:\n got  %q\n want %q", c.name, got, c.want)
 		}
 	}

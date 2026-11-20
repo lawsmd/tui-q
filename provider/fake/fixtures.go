@@ -1,7 +1,12 @@
 package fake
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"time"
 
 	"github.com/lawsmd/tui-q/ticket"
@@ -57,7 +62,39 @@ func fixtures() []ticket.Ticket {
 				{Author: "alex", Created: now.Add(-time.Duration(len(rows)-i) * 4 * time.Hour), Body: "A fix is in review:\n\n- one change to the handler\n- one new test"},
 			},
 		}
+		// One ticket shows a picture in its body and in a comment.
+		if key == PictureTicket {
+			t.Attachments = []ticket.Attachment{screenshot}
+			t.Body += "\n\nThe page as the reporter saw it:\n\n" + screenshot.Ref()
+			t.Comments[0].Body += "\n\n" + screenshot.Ref()
+		}
 		out = append(out, t)
 	}
 	return out
+}
+
+// PictureTicket is the fixture ticket that has a picture attached.
+const PictureTicket = "DEMO-108"
+
+// screenshot is the attachment of PictureTicket.
+var screenshot = ticket.Attachment{ID: "shot-1", Name: "error-page.png", MIME: "image/png"}
+
+// picture draws the file of screenshot: a page with a title bar, a red
+// banner and a few lines of grey text, as a PNG.
+func picture() []byte {
+	const w, h = 480, 270
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	fill := func(r image.Rectangle, c color.RGBA) {
+		draw.Draw(img, r, image.NewUniform(c), image.Point{}, draw.Src)
+	}
+	fill(img.Bounds(), color.RGBA{0xf4, 0xf5, 0xf7, 0xff})
+	fill(image.Rect(0, 0, w, 36), color.RGBA{0x25, 0x38, 0x58, 0xff})
+	fill(image.Rect(40, 70, w-40, 118), color.RGBA{0xde, 0x35, 0x0b, 0xff})
+	for i := range 5 {
+		y := 146 + i*22
+		fill(image.Rect(40, y, w-60-i*55, y+10), color.RGBA{0xb3, 0xba, 0xc5, 0xff})
+	}
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+	return buf.Bytes()
 }

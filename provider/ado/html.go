@@ -1,29 +1,61 @@
 package ado
 
 import (
+	"cmp"
+	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
 	"golang.org/x/net/html"
 
 	"github.com/lawsmd/tui-q/provider"
+	"github.com/lawsmd/tui-q/ticket"
 )
 
 // HTMLToMarkdown converts the HTML of a description or comment into
-// Markdown. It keeps paragraphs, headings, emphasis, code, links and lists;
-// it reduces a table to one line per row and drops images to their alt text.
+// Markdown. It keeps paragraphs, headings, emphasis, code, links and lists,
+// and reduces a table to one line per row. An image that is an attachment
+// of a work item becomes a reference to the attachment, and any other image
+// its alt text.
 func HTMLToMarkdown(s string) string {
+	text, _ := convert(s)
+	return text
+}
+
+// convert is HTMLToMarkdown, and also returns the attachments the HTML
+// shows, each once, in the order they come.
+func convert(s string) (string, []ticket.Attachment) {
 	if strings.TrimSpace(s) == "" {
-		return ""
+		return "", nil
 	}
 	doc, err := html.Parse(strings.NewReader(s))
 	if err != nil {
-		return s
+		return s, nil
 	}
-	var w mdWriter
+	w := mdWriter{found: &[]ticket.Attachment{}}
 	w.node(doc)
-	return strings.TrimSpace(blankRuns.ReplaceAllString(w.b.String(), "\n\n"))
+	return strings.TrimSpace(blankRuns.ReplaceAllString(w.b.String(), "\n\n")), *w.found
+}
+
+// attachmentURL finds the ID of an attachment in the address of an image.
+// Azure DevOps stores a picture pasted into a work item as an attachment
+// and points the image at it.
+var attachmentURL = regexp.MustCompile("(?i)/_apis/wit/attachments/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$")
+
+// attachment reads the attachment an image shows from the image's address.
+func attachment(src, alt string) (ticket.Attachment, bool) {
+	u, err := url.Parse(src)
+	if err != nil {
+		return ticket.Attachment{}, false
+	}
+	m := attachmentURL.FindStringSubmatch(u.Path)
+	if m == nil {
+		return ticket.Attachment{}, false
+	}
+	name := cmp.Or(u.Query().Get("fileName"), alt, "image")
+	return ticket.Attachment{ID: strings.ToLower(m[1]), Name: name, MIME: ticket.ImageType(name)}, true
 }
 
 var blankRuns = regexp.MustCompile(`\n[ \t]*(\n[ \t]*)+`)
@@ -33,7 +65,14 @@ type mdWriter struct {
 	// lists holds, for each open list, its next number, or -1 for bullets.
 	lists []int
 	pre   bool
+	// found collects the attachments shown, and is shared with every
+	// writer made by inner.
+	found *[]ticket.Attachment
 }
+
+// inner is a writer for the inside of an element, whose text the caller
+// puts into this one.
+func (w *mdWriter) inner() mdWriter { return mdWriter{found: w.found} }
 
 func (w *mdWriter) block() { w.b.WriteString("\n\n") }
 
@@ -44,7 +83,7 @@ func (w *mdWriter) children(n *html.Node) {
 }
 
 func (w *mdWriter) wrap(n *html.Node, mark string) {
-	var inner mdWriter
+	inner := w.inner()
 	inner.lists = w.lists
 	inner.children(n)
 	text := strings.TrimSpace(inner.b.String())
@@ -97,7 +136,7 @@ func (w *mdWriter) node(n *html.Node) {
 		w.block()
 	case "h1", "h2", "h3", "h4", "h5", "h6":
 		level, _ := strconv.Atoi(n.Data[1:])
-		var inner mdWriter
+		inner := w.inner()
 		inner.children(n)
 		w.block()
 		w.b.WriteString(strings.Repeat("#", level) + " " + strings.Join(strings.Fields(inner.b.String()), " "))
@@ -109,14 +148,15 @@ func (w *mdWriter) node(n *html.Node) {
 	case "code":
 		w.wrap(n, "`")
 	case "pre":
-		inner := mdWriter{pre: true}
+		inner := w.inner()
+		inner.pre = true
 		inner.children(n)
 		w.block()
 		w.b.WriteString(provider.Fence(inner.b.String(), codeLang(n)))
 		w.block()
 	case "a":
 		href := attr(n, "href")
-		var inner mdWriter
+		inner := w.inner()
 		inner.children(n)
 		text := strings.TrimSpace(inner.b.String())
 		switch {
@@ -128,7 +168,15 @@ func (w *mdWriter) node(n *html.Node) {
 			w.b.WriteString("[" + text + "](" + href + ")")
 		}
 	case "img":
-		if alt := attr(n, "alt"); alt != "" {
+		if a, ok := attachment(attr(n, "src"), attr(n, "alt")); ok {
+			if w.found != nil && !slices.ContainsFunc(*w.found, func(f ticket.Attachment) bool { return f.ID == a.ID }) {
+				*w.found = append(*w.found, a)
+			}
+			// On a line of its own, as the picture is shown.
+			w.block()
+			w.b.WriteString(a.Ref())
+			w.block()
+		} else if alt := attr(n, "alt"); alt != "" {
 			w.b.WriteString("[image: " + alt + "]")
 		} else {
 			w.b.WriteString("[image]")
@@ -154,7 +202,7 @@ func (w *mdWriter) node(n *html.Node) {
 			marker = strconv.Itoa(w.lists[depth-1]) + ". "
 			w.lists[depth-1]++
 		}
-		var inner mdWriter
+		inner := w.inner()
 		inner.lists = w.lists
 		inner.children(n)
 		text := strings.TrimSpace(blankRuns.ReplaceAllString(inner.b.String(), "\n"))
@@ -165,7 +213,7 @@ func (w *mdWriter) node(n *html.Node) {
 		var cells []string
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			if c.Type == html.ElementNode && (c.Data == "td" || c.Data == "th") {
-				var inner mdWriter
+				inner := w.inner()
 				inner.children(c)
 				cells = append(cells, strings.Join(strings.Fields(inner.b.String()), " "))
 			}

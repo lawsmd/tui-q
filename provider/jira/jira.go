@@ -1,13 +1,16 @@
 package jira
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,9 +53,12 @@ type Provider struct {
 	// meta remembers, per issue and Jira field ID, what the edit and
 	// transition screens said about each field.
 	// edit marks the issues whose edit screen has been read.
-	mu   sync.Mutex
-	meta map[string]map[string]ticket.FieldSpec
-	edit map[string]bool
+	// media remembers, per attachment ID, the ID the media store knows the
+	// file by, and an empty one for an attachment that has none.
+	mu    sync.Mutex
+	meta  map[string]map[string]ticket.FieldSpec
+	edit  map[string]bool
+	media map[string]string
 }
 
 // New builds a Provider from a profile's [provider] section. The
@@ -87,7 +93,7 @@ func (p *Provider) Resolve(input string) (string, error) {
 
 // NewProvider builds a Provider around an existing Client.
 func NewProvider(client *Client, fields map[string]string) *Provider {
-	return &Provider{client: client, fields: fields, meta: map[string]map[string]ticket.FieldSpec{}, edit: map[string]bool{}}
+	return &Provider{client: client, fields: fields, meta: map[string]map[string]ticket.FieldSpec{}, edit: map[string]bool{}, media: map[string]string{}}
 }
 
 // Client returns the HTTP client, for instance code that needs endpoints
@@ -137,7 +143,7 @@ func (p *Provider) Search(ctx context.Context, query string) ([]ticket.Ticket, e
 			return nil, err
 		}
 		for _, is := range page.Issues {
-			out = append(out, p.toTicket(is))
+			out = append(out, p.toTicket(is, nil))
 		}
 		token = page.NextPageToken
 		if token == "" || len(page.Issues) == 0 || len(out) >= maxResults {
@@ -167,7 +173,7 @@ func (p *Provider) SearchPage(ctx context.Context, query, cursor string, limit i
 	}
 	page := provider.Page{Next: resp.NextPageToken, Total: -1}
 	for _, is := range resp.Issues {
-		page.Tickets = append(page.Tickets, p.toTicket(is))
+		page.Tickets = append(page.Tickets, p.toTicket(is, nil))
 	}
 	var count struct {
 		Count *int `json:"count"`
@@ -179,18 +185,98 @@ func (p *Provider) SearchPage(ctx context.Context, query, cursor string, limit i
 	return page, nil
 }
 
-// Get loads one issue with its description, its comments, and the fields
-// of its edit screen.
+// Get loads one issue with its description, its comments, its attachments,
+// and the fields of its edit screen.
 func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 	path := "/rest/api/3/issue/" + url.PathEscape(id) +
-		"?expand=editmeta&fields=" + url.QueryEscape(strings.Join(p.fieldIDs("description", "comment"), ","))
+		"?expand=editmeta&fields=" + url.QueryEscape(strings.Join(p.fieldIDs("description", "comment", "attachment"), ","))
 	var is issue
 	if err := p.client.Do(ctx, http.MethodGet, path, nil, &is); err != nil {
 		return ticket.Ticket{}, err
 	}
-	t := p.toTicket(is)
+	t := p.toTicket(is, p.mediaIDs(ctx, is))
 	t.Editable = p.specs(t.ID, is.EditMeta.Fields, true)
 	return t, nil
+}
+
+// attachments reads the list of files on an issue.
+func attachments(raw json.RawMessage) []ticket.Attachment {
+	var files []struct {
+		ID       string `json:"id"`
+		Filename string `json:"filename"`
+		MimeType string `json:"mimeType"`
+		Size     int64  `json:"size"`
+	}
+	if json.Unmarshal(raw, &files) != nil {
+		return nil
+	}
+	out := make([]ticket.Attachment, len(files))
+	for i, a := range files {
+		out[i] = ticket.Attachment{ID: a.ID, Name: a.Filename, MIME: a.MimeType, Size: a.Size}
+	}
+	return out
+}
+
+// mediaID finds the ID of the media store in the address Jira sends a
+// reader of an attachment on to.
+var mediaID = regexp.MustCompile(`/file/([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})/`)
+
+// mediaReaders is how many attachments are asked about at once.
+const mediaReaders = 4
+
+// mediaIDs gives the attachments of an issue by the ID the media store
+// knows each by, which is how the description and the comments name the
+// files they show. Jira's list of attachments leaves that ID out. It is
+// read from the address Jira answers a request for the file with, one
+// request for each attachment and none for the file itself, the first time
+// the attachment is seen. An issue whose text shows no file costs nothing.
+// An attachment Jira does not answer for is left out, and is still matched
+// by its name where the text gives one.
+func (p *Provider) mediaIDs(ctx context.Context, is issue) map[string]ticket.Attachment {
+	atts := attachments(is.Fields["attachment"])
+	shown := bytes.Contains(is.Fields["description"], []byte(`"media`)) || bytes.Contains(is.Fields["comment"], []byte(`"media`))
+	if len(atts) == 0 || !shown {
+		return nil
+	}
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, mediaReaders)
+	for _, a := range atts {
+		p.mu.Lock()
+		_, known := p.media[a.ID]
+		p.mu.Unlock()
+		if known {
+			continue
+		}
+		wg.Add(1)
+		slots <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-slots }()
+			to, err := p.client.Location(ctx, "/rest/api/3/attachment/content/"+url.PathEscape(a.ID))
+			if err != nil {
+				return
+			}
+			id := ""
+			if u, err := url.Parse(to); err == nil {
+				if m := mediaID.FindStringSubmatch(u.Path); m != nil {
+					id = strings.ToLower(m[1])
+				}
+			}
+			p.mu.Lock()
+			p.media[a.ID] = id
+			p.mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	out := map[string]ticket.Attachment{}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, a := range atts {
+		if id := p.media[a.ID]; id != "" {
+			out[id] = a
+		}
+	}
+	return out
 }
 
 // Transitions lists the workflow transitions open to an issue, each with
@@ -312,6 +398,20 @@ func (p *Provider) AddComment(ctx context.Context, id, kind, body string) error 
 	return p.client.Do(ctx, http.MethodPost, path, req, nil)
 }
 
+// The provider reads attachments.
+var _ provider.AttachmentReader = (*Provider)(nil)
+
+// ReadAttachment reads a file by the ID the issue lists it under. Jira
+// answers with a redirect to its media store, to an address that carries
+// its own permission; the credentials are not sent there.
+func (p *Provider) ReadAttachment(ctx context.Context, a ticket.Attachment) (io.ReadCloser, error) {
+	resp, err := p.client.Raw(ctx, http.MethodGet, "/rest/api/3/attachment/content/"+url.PathEscape(a.ID), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Body, nil
+}
+
 // fieldID maps a profile field name to the Jira field ID.
 func (p *Provider) fieldID(name string) string {
 	switch name {
@@ -335,8 +435,9 @@ func encode(v ticket.Value) any {
 	return v.Text
 }
 
-// toTicket maps one issue into the neutral model.
-func (p *Provider) toTicket(is issue) ticket.Ticket {
+// toTicket maps one issue into the neutral model. byMedia is the issue's
+// attachments by their ID in the media store, where Get has found them.
+func (p *Provider) toTicket(is issue, byMedia map[string]ticket.Attachment) ticket.Ticket {
 	f := is.Fields
 	t := ticket.Ticket{
 		ID:       is.Key,
@@ -349,9 +450,11 @@ func (p *Provider) toTicket(is issue) ticket.Ticket {
 		URL:      p.client.BaseURL() + "/browse/" + is.Key,
 		Created:  parseTime(f["created"]),
 		Updated:  parseTime(f["updated"]),
-		Body:     adfToMarkdown(f["description"]),
 		Fields:   map[string]ticket.Value{},
 	}
+	t.Attachments = attachments(f["attachment"])
+	shown := files{all: t.Attachments, byMedia: byMedia}
+	t.Body = adfToMarkdown(f["description"], shown)
 	for name, id := range p.fields {
 		if raw, ok := f[id]; ok {
 			t.Fields[name] = decode(raw)
@@ -379,7 +482,7 @@ func (p *Provider) toTicket(is issue) ticket.Ticket {
 				t.Comments = append(t.Comments, ticket.Comment{
 					Author:  c.Author.DisplayName,
 					Created: parseTime(c.Created),
-					Body:    adfToMarkdown(c.Body),
+					Body:    adfToMarkdown(c.Body, shown),
 					Kind:    kind,
 				})
 			}
@@ -410,7 +513,7 @@ func decode(raw json.RawMessage) ticket.Value {
 		return ticket.Value{Items: items}
 	case map[string]any:
 		if v["type"] == "doc" {
-			return ticket.Text(adfToMarkdown(raw))
+			return ticket.Text(adfToMarkdown(raw, files{}))
 		}
 	}
 	return ticket.Text(scalar(v))

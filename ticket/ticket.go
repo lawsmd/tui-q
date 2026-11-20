@@ -2,6 +2,7 @@
 package ticket
 
 import (
+	"regexp"
 	"strings"
 	"time"
 )
@@ -77,12 +78,19 @@ type Ticket struct {
 	// platform's name for the language after the opening fence when it
 	// gives one. provider.Fence writes that form. The ticket view draws a
 	// fenced block as a code block and colours it by language.
+	//
+	// A file the platform shows in the text is written as the reference
+	// Attachment.Ref gives, and the file is listed in Attachments.
 	Body string
 
 	// Fields holds everything else, keyed by the field name the profile uses.
 	Fields map[string]Value
 
 	Comments []Comment
+
+	// Attachments are the files on the ticket that its body or a comment
+	// shows. Only a ticket loaded in full has them.
+	Attachments []Attachment
 
 	// Editable describes the fields the platform lets the user change on
 	// this ticket. Only a ticket loaded in full has it.
@@ -97,6 +105,94 @@ func (t Ticket) Spec(name string) (FieldSpec, bool) {
 		}
 	}
 	return FieldSpec{}, false
+}
+
+// Attachment returns the attachment of this ticket with the given ID.
+func (t Ticket) Attachment(id string) (Attachment, bool) {
+	for _, a := range t.Attachments {
+		if a.ID == id {
+			return a, true
+		}
+	}
+	return Attachment{}, false
+}
+
+// Attachment is a file on a ticket.
+type Attachment struct {
+	// ID is what the platform's API takes to read the file.
+	ID   string
+	Name string
+	// MIME is the media type, such as "image/png", or empty when the
+	// platform does not give one.
+	MIME string
+	// Size is in bytes, or 0 when the platform does not give one.
+	Size int64
+}
+
+// imageTypes are the media types of the pictures tui-q shows, with the
+// file extension of each.
+var imageTypes = map[string]string{
+	"image/png":  ".png",
+	"image/jpeg": ".jpg",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+	"image/bmp":  ".bmp",
+}
+
+// Image reports whether the attachment is a picture tui-q can show.
+func (a Attachment) Image() bool { return a.Ext() != "" }
+
+// Ext is the file extension for a picture, such as ".png", and empty for
+// any other attachment. It is taken from the media type and never from the
+// name, so a file is only ever stored under an extension of a picture.
+func (a Attachment) Ext() string { return imageTypes[a.MIME] }
+
+// ImageType is the media type of a picture, read from the extension of its
+// file name, for a platform that gives a name and no type. It is empty for
+// a name that is not a picture's.
+func ImageType(name string) string {
+	ext := ""
+	if i := strings.LastIndexByte(name, '.'); i >= 0 {
+		ext = strings.ToLower(name[i:])
+	}
+	if ext == ".jpeg" {
+		ext = ".jpg"
+	}
+	for mime, e := range imageTypes {
+		if e == ext {
+			return mime
+		}
+	}
+	return ""
+}
+
+// attachmentScheme starts the address of an attachment in Markdown.
+const attachmentScheme = "attachment:"
+
+// Ref is the Markdown that stands for the attachment in a body:
+// ![name](attachment:ID). A provider writes it where the platform shows the
+// file, on a line of its own when the file is shown as a block.
+func (a Attachment) Ref() string {
+	name := strings.NewReplacer("[", "(", "]", ")", "\n", " ").Replace(a.Name)
+	return "![" + name + "](" + attachmentScheme + a.ID + ")"
+}
+
+var refPattern = regexp.MustCompile(`!\[([^\]\n]*)\]\(attachment:([^)\s]+)\)`)
+
+// Ref is one place in a Markdown text that stands for an attachment.
+type Ref struct {
+	// Start and End bound the reference in the text.
+	Start, End int
+	Name, ID   string
+}
+
+// Refs finds every reference to an attachment in a Markdown text, in order.
+func Refs(text string) []Ref {
+	var out []Ref
+	for _, m := range refPattern.FindAllStringSubmatchIndex(text, -1) {
+		out = append(out, Ref{Start: m[0], End: m[1], Name: text[m[2]:m[3]], ID: text[m[4]:m[5]]})
+	}
+	return out
 }
 
 // Kinds of field, which decide how a value is entered.

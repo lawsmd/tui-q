@@ -132,6 +132,32 @@ func (c *Client) Raw(ctx context.Context, method, target string, header http.Hea
 	return resp, nil
 }
 
+// Location asks for a path on the site and returns the address the site
+// sends the reader on to, without going there. It is empty when the site
+// answers the request itself.
+func (c *Client) Location(ctx context.Context, path string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(c.user, c.token)
+	client := *c.http
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("GET %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode >= 300 && resp.StatusCode <= 399:
+		return resp.Header.Get("Location"), nil
+	case resp.StatusCode < 200 || resp.StatusCode > 299:
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return "", &Error{Method: http.MethodGet, Path: path, Status: resp.StatusCode, Messages: errorMessages(data)}
+	}
+	return "", nil
+}
+
 // errorMessages pulls the readable parts out of a Jira error body.
 func errorMessages(data []byte) []string {
 	var body struct {

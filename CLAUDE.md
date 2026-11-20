@@ -61,7 +61,8 @@ into this repository.
 | `internal/editor` | the comment box: a slate editor behind the `Box` interface |
 | `internal/drafts` | comments started and not sent, as Markdown, saved per site and ticket |
 | `internal/people` | people mentioned in sent comments, saved per site and offered first after `@` |
-| `internal/browser` | opens a URL in the default browser |
+| `internal/attach` | files read from tickets, kept per site in the cache directory |
+| `internal/browser` | opens a URL in the default browser, and a file in the program for its type |
 | `scripts/check-names` | the naming guard |
 
 ## Rules for the code
@@ -97,6 +98,11 @@ into this repository.
   this; extend it when a view is added.
 - An instance action runs through `Model.doAction`, which locks input and shows the
   steps the action reports. The core never learns what an action does.
+- A platform whose tickets show files implements `provider.AttachmentReader`, lists the
+  files in `Ticket.Attachments`, and writes `Attachment.Ref()` where the body or a comment
+  shows one. The ticket view opens pictures only (`Attachment.Image`), and a file is
+  stored under an extension taken from its media type, never from its name: opening any
+  other file would start whatever program its type belongs to.
 - A profile never holds a secret. It names the environment variables that do.
 - `tq order` tells an LLM agent the order to work in. It prints key, status and title for
   each ticket. Do not add other fields, full ticket loads or writes to it: the agent reads

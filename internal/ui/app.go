@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/lawsmd/tui-q/ext"
+	"github.com/lawsmd/tui-q/internal/attach"
 	"github.com/lawsmd/tui-q/internal/browser"
 	"github.com/lawsmd/tui-q/internal/drafts"
 	"github.com/lawsmd/tui-q/internal/editor"
@@ -64,6 +65,8 @@ const (
 	idJump       = "jump"
 	idPagePrev   = "pageprev"
 	idPageNext   = "pagenext"
+	// idFile is the line of an attachment in a ticket.
+	idFile = "file"
 	// idCommentOrder is the control that turns the order of comments round.
 	idCommentOrder = "commentorder"
 	// idComment is the line of the comment box, and the two after it are
@@ -183,6 +186,10 @@ type Model struct {
 	people     *people.Store
 	openEditor func(editor.Config) (editor.Box, error)
 	warm       func()
+	// files keeps the attachments read from tickets, and openFile hands
+	// one of them to the program for its type.
+	files    *attach.Store
+	openFile func(path string) error
 	// undo puts the screen back when the running write fails.
 	undo func()
 	// notice is a one-line message for the status bar. The next click
@@ -211,6 +218,9 @@ type Options struct {
 	// People holds the people mentioned in comments, who are offered first
 	// after "@". When it is nil they last until the program exits.
 	People *people.Store
+	// Files keeps the attachments read from tickets. When it is nil no
+	// attachment can be opened.
+	Files *attach.Store
 	// OpenEditor makes the box a comment is written in. When it is nil, or
 	// the provider cannot add comments, the interface offers no comment
 	// box.
@@ -231,6 +241,9 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 	if opts.People == nil {
 		opts.People = people.Open("")
 	}
+	if opts.Files == nil {
+		opts.Files = attach.Open("")
+	}
 	m := &Model{
 		people:     opts.People,
 		prof:       prof,
@@ -238,6 +251,8 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 		prefs:      opts.Prefs,
 		actions:    opts.Actions,
 		drafts:     opts.Drafts,
+		files:      opts.Files,
+		openFile:   browser.OpenFile,
 		openEditor: opts.OpenEditor,
 		warm:       opts.WarmEditor,
 		styles:     DefaultStyles(),
@@ -446,6 +461,44 @@ func (m *Model) openURL(t ticket.Ticket) tea.Cmd {
 	}
 	return m.start("Opening "+t.Key+" in the browser", false, func(context.Context) (tea.Msg, error) {
 		if err := browser.Open(t.URL); err != nil {
+			return nil, err
+		}
+		return browserOpenedMsg{}, nil
+	})
+}
+
+// canOpen reports whether an attachment of a ticket can be opened: the
+// provider reads attachments, and this one is a picture. Any other kind of
+// file is left to the platform's own page, since opening it here would
+// hand a file from a ticket to whatever program its type starts.
+func (m *Model) canOpen(t ticket.Ticket, id string) bool {
+	a, ok := t.Attachment(id)
+	_, reads := m.prov.(provider.AttachmentReader)
+	return ok && reads && a.Image()
+}
+
+// openAttachment shows a picture attached to a ticket in the program the
+// machine opens pictures with. The file is read from the platform the
+// first time and from the store after that.
+func (m *Model) openAttachment(t ticket.Ticket, id string) tea.Cmd {
+	if !m.canOpen(t, id) {
+		return nil
+	}
+	a, _ := t.Attachment(id)
+	reader := m.prov.(provider.AttachmentReader)
+	return m.start("Opening "+a.Name, false, func(ctx context.Context) (tea.Msg, error) {
+		path, ok := m.files.Path(a)
+		if !ok {
+			body, err := reader.ReadAttachment(ctx, a)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", a.Name, err)
+			}
+			defer body.Close()
+			if path, err = m.files.Save(a, body); err != nil {
+				return nil, err
+			}
+		}
+		if err := m.openFile(path); err != nil {
 			return nil, err
 		}
 		return browserOpenedMsg{}, nil
@@ -880,6 +933,12 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		m.discardComment()
 	case idCommentKind:
 		m.pickCommentKind(n)
+	case idFile:
+		if m.activeTab >= 0 {
+			if tab := m.tabs[m.activeTab]; n >= 0 && n < len(tab.files) {
+				return m.openAttachment(tab.t, tab.files[n])
+			}
+		}
 	case idCommentOrder:
 		err := m.prefs.SetCommentsOldestFirst(!m.prefs.CommentsOldestFirst)
 		for _, tab := range m.tabs {

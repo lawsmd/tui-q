@@ -57,13 +57,19 @@ type ticketTab struct {
 	// fields are the names of the fields that can be clicked in the last
 	// frame drawn. A field layer's index points into it.
 	fields []string
+	// files are the IDs of the attachments that can be clicked in the last
+	// frame drawn. A file layer's index points into it.
+	files []string
 }
 
 // labelLine is something clickable in a column: the label of an editable
 // field, with the line it is drawn on and how far along the line it
-// starts. One with no name is the control for the order of the comments.
+// starts. One with a file is the line of an attachment that can be opened,
+// and file is the attachment's ID. One with neither a name nor a file is
+// the control for the order of the comments.
 type labelLine struct {
 	name string
+	file string
 	line int
 	x    int
 	text string
@@ -123,7 +129,7 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 	}
 
 	body := ticketBody(a)
-	tab.fields = nil
+	tab.fields, tab.files = nil, nil
 	tab.sideX = 0
 	if body.h <= 0 || body.w <= 0 {
 		return layers
@@ -146,7 +152,11 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 				continue
 			}
 			id := idCommentOrder
-			if l.name != "" {
+			switch {
+			case l.file != "":
+				id = layerID(idFile, len(tab.files))
+				tab.files = append(tab.files, l.file)
+			case l.name != "":
 				id = layerID(idField, len(tab.fields))
 				tab.fields = append(tab.fields, l.name)
 			}
@@ -280,6 +290,19 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 	add := func(text string) {
 		lines = append(lines, strings.Split(lipgloss.Wrap(text, w, ""), "\n")...)
 	}
+	// markdown renders text width cells wide and gives the lines of the
+	// pictures in it that can be opened as labels. at is the line of the
+	// column the first line of the text goes on, and x how far along the
+	// column the text starts.
+	markdown := func(text string, width, at, x int) []string {
+		out, files := s.markdownFiles(text, width)
+		for _, f := range files {
+			if m.canOpen(tab.t, f.id) && f.text != "" {
+				labels = append(labels, labelLine{file: f.id, line: at + f.line, x: x + f.x, text: s.Label.Render(f.text)})
+			}
+		}
+		return out
+	}
 	for _, name := range m.prof.Ticket.Main {
 		if name == ticket.FieldTitle || !tab.shows(name) {
 			continue
@@ -298,7 +321,7 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 		if value == "" {
 			add(s.Faint.Render(empty))
 		} else {
-			lines = append(lines, s.markdownLines(value, w)...)
+			lines = append(lines, markdown(value, w, len(lines), 0)...)
 		}
 		lines = append(lines, "")
 	}
@@ -352,9 +375,20 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 			if c.Kind != "" {
 				title += s.Faint.Render(" · ") + s.Label.Render(c.Kind)
 			}
-			text := unindent(s.markdownLines(c.Body, w-4+markdownMargin), markdownMargin)
+			// Inside the box the text starts one line down, after the
+			// border and a space, with the margin of the Markdown cut off.
+			first := len(labels)
+			text := unindent(markdown(c.Body, w-4+markdownMargin, len(lines)+1, 2-markdownMargin), markdownMargin)
 			for i, line := range text {
 				text[i] = pad(line, w-4)
+			}
+			// unindent keeps the margin when some line has text in it, so
+			// each label is put where its text ended up.
+			for i := first; i < len(labels); i++ {
+				line := ansi.Strip(text[labels[i].line-len(lines)-1])
+				if at := strings.Index(line, ansi.Strip(labels[i].text)); at >= 0 {
+					labels[i].x = 2 + ansi.StringWidth(line[:at])
+				}
 			}
 			lines = append(lines, titledBox(title, text, w, border)...)
 		}

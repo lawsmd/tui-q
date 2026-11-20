@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -268,7 +269,18 @@ func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 		return ticket.Ticket{}, err
 	}
 	t := p.ToTicket(w)
-	t.Body = HTMLToMarkdown(decode(w.Fields[fieldBody]).Text)
+	// The attachments are the pictures the description and the comments
+	// show, each listed once.
+	text := func(html string) string {
+		md, found := convert(html)
+		for _, a := range found {
+			if _, ok := t.Attachment(a.ID); !ok {
+				t.Attachments = append(t.Attachments, a)
+			}
+		}
+		return md
+	}
+	t.Body = text(decode(w.Fields[fieldBody]).Text)
 
 	var comments struct {
 		Comments []struct {
@@ -290,10 +302,25 @@ func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 		t.Comments = append(t.Comments, ticket.Comment{
 			Author:  c.CreatedBy.DisplayName,
 			Created: parseTime(c.CreatedDate),
-			Body:    HTMLToMarkdown(cmp.Or(c.RenderedText, c.Text)),
+			Body:    text(cmp.Or(c.RenderedText, c.Text)),
 		})
 	}
 	return t, nil
+}
+
+// The provider reads attachments.
+var _ provider.AttachmentReader = (*Provider)(nil)
+
+// ReadAttachment reads a file by its attachment ID.
+func (p *Provider) ReadAttachment(ctx context.Context, a ticket.Attachment) (io.ReadCloser, error) {
+	if !attachmentURL.MatchString("/_apis/wit/attachments/" + a.ID) {
+		return nil, fmt.Errorf("ado: %q is not an attachment ID", a.ID)
+	}
+	resp, err := p.client.Raw(ctx, http.MethodGet, p.projectPath()+"/_apis/wit/attachments/"+a.ID, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Body, nil
 }
 
 // Transitions lists no moves: the provider changes no state.

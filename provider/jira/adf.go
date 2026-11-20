@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/lawsmd/tui-q/provider"
+	"github.com/lawsmd/tui-q/ticket"
 )
 
 // node is one node of an Atlassian Document Format tree.
@@ -30,10 +31,27 @@ func isADF(raw json.RawMessage) bool {
 	return json.Unmarshal(raw, &probe) == nil && probe.Type == "doc"
 }
 
-// adfToMarkdown converts an ADF document to Markdown. Nodes with no
-// Markdown form (media, cards) are written as short placeholders so the
-// reader knows something is there and can open the ticket in a browser.
-func adfToMarkdown(raw json.RawMessage) string {
+// noMedia stands for a media node that matches no attachment of the issue,
+// so the reader knows something is there and can open the ticket in a
+// browser.
+const noMedia = "*[attachment]*"
+
+// refAttr is the attribute bindMedia gives a media node: the Markdown that
+// stands for its attachment.
+const refAttr = "tuiq-ref"
+
+// files is what a document's media nodes are matched against: the
+// attachments of the issue, and those of them whose ID in the media store
+// is known, by that ID.
+type files struct {
+	all     []ticket.Attachment
+	byMedia map[string]ticket.Attachment
+}
+
+// adfToMarkdown converts an ADF document to Markdown. A media node becomes
+// a reference to the attachment it shows, and noMedia when it shows none
+// of them. A card is written as its link.
+func adfToMarkdown(raw json.RawMessage, f files) string {
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
 	}
@@ -41,7 +59,45 @@ func adfToMarkdown(raw json.RawMessage) string {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return ""
 	}
+	if len(f.all) > 0 {
+		bindMedia(&doc, f)
+	}
 	return strings.TrimSpace(blocks(doc.Content, ""))
+}
+
+// bindMedia gives every media node under n the reference to its
+// attachment. A media node names its file by an ID of the media store,
+// which the issue's list of attachments does not carry. Where the provider
+// has found that ID for an attachment the two are matched by it. Failing
+// that they are matched by file name, which some nodes carry as alt text;
+// of several attachments with one name the newest is taken, which is the
+// last in the list.
+func bindMedia(n *node, f files) {
+	if n.Type == "media" || n.Type == "mediaInline" {
+		id, _ := n.Attrs["id"].(string)
+		name, _ := n.Attrs["alt"].(string)
+		if a, ok := f.byMedia[id]; ok && id != "" {
+			n.Attrs[refAttr] = a.Ref()
+		} else if name != "" {
+			for i := len(f.all) - 1; i >= 0; i-- {
+				if f.all[i].Name == name {
+					n.Attrs[refAttr] = f.all[i].Ref()
+					break
+				}
+			}
+		}
+	}
+	for i := range n.Content {
+		bindMedia(&n.Content[i], f)
+	}
+}
+
+// media is the Markdown for one media node.
+func media(n node) string {
+	if ref, _ := n.Attrs[refAttr].(string); ref != "" {
+		return ref
+	}
+	return noMedia
 }
 
 // blocks renders block nodes, each followed by a blank line. indent is put
@@ -111,8 +167,20 @@ func block(n node) string {
 			return body
 		}
 		return "**" + title + "**\n\n" + body
-	case "mediaSingle", "mediaGroup", "media":
-		return "*[attachment]*"
+	case "media":
+		return media(n)
+	case "mediaSingle", "mediaGroup":
+		// Each file goes on a line of its own. A caption is left out.
+		var files []string
+		for _, c := range n.Content {
+			if c.Type == "media" {
+				files = append(files, media(c))
+			}
+		}
+		if len(files) == 0 {
+			return noMedia
+		}
+		return strings.Join(files, "\n\n")
 	case "blockCard", "embedCard":
 		if url, _ := n.Attrs["url"].(string); url != "" {
 			return "<" + url + ">"
@@ -197,7 +265,7 @@ func inline(nodes []node) string {
 				b.WriteString("<" + url + ">")
 			}
 		case "media", "mediaInline":
-			b.WriteString("*[attachment]*")
+			b.WriteString(media(n))
 		default:
 			b.WriteString(inline(n.Content))
 		}

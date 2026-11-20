@@ -4,8 +4,10 @@
 package fake
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync"
@@ -348,6 +350,20 @@ func (p *Provider) AddComment(ctx context.Context, id, kind, body string) error 
 		ticket.Comment{Author: People[0], Created: now, Body: body, Kind: kind})
 	t.Updated = now
 	return nil
+}
+
+// The provider reads attachments.
+var _ provider.AttachmentReader = (*Provider)(nil)
+
+// ReadAttachment returns the picture of PictureTicket.
+func (p *Provider) ReadAttachment(ctx context.Context, a ticket.Attachment) (io.ReadCloser, error) {
+	if err := p.wait(ctx); err != nil {
+		return nil, err
+	}
+	if a.ID != screenshot.ID {
+		return nil, fmt.Errorf("attachment %s not found", a.ID)
+	}
+	return io.NopCloser(bytes.NewReader(picture())), nil
 }
 
 // Me is the first of People.

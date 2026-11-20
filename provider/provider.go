@@ -4,6 +4,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"io"
 	"slices"
 	"sort"
 	"sync"
@@ -109,6 +110,14 @@ type Mentioner interface {
 	// Mentionable lists the people who can be mentioned in a comment on a
 	// ticket and whose names match query.
 	Mentionable(ctx context.Context, id, query string) ([]ticket.User, error)
+}
+
+// AttachmentReader is a Provider that can read the files on a ticket. The
+// interface opens an attachment only for a provider that implements it.
+type AttachmentReader interface {
+	// ReadAttachment returns the bytes of one of a ticket's Attachments.
+	// The caller closes the reader.
+	ReadAttachment(ctx context.Context, a ticket.Attachment) (io.ReadCloser, error)
 }
 
 // CommentKind is one way a platform can post a comment, such as a reply

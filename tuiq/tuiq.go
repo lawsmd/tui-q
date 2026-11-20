@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lawsmd/tui-q/ext"
+	"github.com/lawsmd/tui-q/internal/attach"
 	"github.com/lawsmd/tui-q/internal/drafts"
 	"github.com/lawsmd/tui-q/internal/editor"
 	"github.com/lawsmd/tui-q/internal/people"
@@ -113,6 +114,9 @@ func Run(opts ...Option) error {
 	}
 	if path, err := people.Path(site); err == nil {
 		uiOpts.People = people.Open(path)
+	}
+	if dir, err := attach.Dir(site); err == nil {
+		uiOpts.Files = attach.Open(dir)
 	}
 	// The comment box is an editor drawn by a browser, which is started
 	// when the first ticket is shown and stopped here.
