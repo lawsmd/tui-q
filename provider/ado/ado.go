@@ -1,6 +1,7 @@
 package ado
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -27,8 +28,11 @@ const batchSize = 200
 // readers is how many batch reads run at once.
 const readers = 4
 
-// ErrReadOnly is returned by every write. The provider reads only.
+// ErrReadOnly is returned by every write but AddComment.
 var ErrReadOnly = errors.New("ado: this provider is read-only")
+
+// The provider adds comments.
+var _ provider.Commenter = (*Provider)(nil)
 
 func init() {
 	provider.Register(Kind, func(cfg provider.Config) (provider.Provider, error) {
@@ -76,6 +80,10 @@ func New(cfg provider.Config) (*Provider, error) {
 			return nil, fmt.Errorf("ado: environment variable %s is not set", cfg.TokenEnv)
 		}
 		auth = PAT(token)
+	}
+	// Azure DevOps has one kind of comment, so a profile can turn on none.
+	if _, err := provider.PickKinds(cfg.CommentKinds); err != nil {
+		return nil, fmt.Errorf("ado: %w", err)
 	}
 	return NewProvider(NewClient(cfg.BaseURL, auth), cfg.DefaultProject, cfg.Fields), nil
 }
@@ -264,14 +272,17 @@ func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 
 	var comments struct {
 		Comments []struct {
-			Text      string `json:"text"`
-			CreatedBy struct {
+			Text string `json:"text"`
+			// RenderedText is the HTML Azure DevOps shows, also for a
+			// comment written in Markdown, with each mention as a name.
+			RenderedText string `json:"renderedText"`
+			CreatedBy    struct {
 				DisplayName string `json:"displayName"`
 			} `json:"createdBy"`
 			CreatedDate json.RawMessage `json:"createdDate"`
 		} `json:"comments"`
 	}
-	path := p.projectPath() + "/_apis/wit/workItems/" + id + "/comments?order=asc&api-version=" + apiVersion + "-preview.4"
+	path := p.projectPath() + "/_apis/wit/workItems/" + id + "/comments?order=asc&$expand=renderedText&api-version=" + apiVersion + "-preview.4"
 	if err := p.client.Do(ctx, http.MethodGet, path, nil, &comments); err != nil {
 		return ticket.Ticket{}, err
 	}
@@ -279,13 +290,13 @@ func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 		t.Comments = append(t.Comments, ticket.Comment{
 			Author:  c.CreatedBy.DisplayName,
 			Created: parseTime(c.CreatedDate),
-			Body:    HTMLToMarkdown(c.Text),
+			Body:    HTMLToMarkdown(cmp.Or(c.RenderedText, c.Text)),
 		})
 	}
 	return t, nil
 }
 
-// Transitions lists no moves: the provider reads only.
+// Transitions lists no moves: the provider changes no state.
 func (p *Provider) Transitions(context.Context, string) ([]ticket.Transition, error) {
 	return nil, nil
 }
@@ -321,11 +332,6 @@ func (p *Provider) Me(ctx context.Context) (ticket.User, error) {
 	}
 	u := resp.AuthenticatedUser
 	return ticket.User{ID: u.Properties.Account.Value, Name: u.ProviderDisplayName}, nil
-}
-
-// Users lists no one: the provider does not assign.
-func (p *Provider) Users(context.Context, string, string) ([]ticket.User, error) {
-	return nil, nil
 }
 
 // FieldLabels gives the platform's name for each field of the profile.

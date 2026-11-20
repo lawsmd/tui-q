@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -41,6 +42,13 @@ type fakeServer struct {
 	items   map[int]string
 	batches [][]int
 	auth    string
+	// posted holds the query and text of each comment added.
+	posted []postedComment
+}
+
+type postedComment struct {
+	query url.Values
+	text  string
 }
 
 func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -91,8 +99,30 @@ func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "order not asc", http.StatusBadRequest)
 			return
 		}
+		rendered := r.URL.Query().Get("$expand") == "renderedText"
 		io.WriteString(w, `{"comments": [{"text": "<div>Seen it <i>too</i>.</div>",
-		  "createdBy": {"displayName": "Alex Example"}, "createdDate": "2026-03-04T11:00:00Z"}]}`)
+		  "createdBy": {"displayName": "Alex Example"}, "createdDate": "2026-03-04T11:00:00Z"},
+		  {"text": "Thanks @<0000-42>", "format": "markdown",`+map[bool]string{true: `
+		  "renderedText": "<p>Thanks <a href=\"#\" data-vss-mention=\"version:2.0,0000-42\">@Sam Example</a></p>",`}[rendered]+`
+		  "createdBy": {"displayName": "Alex Example"}, "createdDate": "2026-03-04T12:00:00Z"}]}`)
+	case r.Method == http.MethodPost && r.URL.Path == "/DEMO/_apis/wit/workItems/7/comments":
+		var body struct{ Text string }
+		json.NewDecoder(r.Body).Decode(&body)
+		f.posted = append(f.posted, postedComment{query: r.URL.Query(), text: body.Text})
+		io.WriteString(w, `{"id": 1}`)
+	case r.Method == http.MethodPost && r.URL.Path == "/_apis/IdentityPicker/Identities":
+		var body struct {
+			Query         string
+			IdentityTypes []string
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Query != "sam" || len(body.IdentityTypes) != 1 || body.IdentityTypes[0] != "user" {
+			http.Error(w, `{"message": "bad search"}`, http.StatusBadRequest)
+			return
+		}
+		io.WriteString(w, `{"results": [{"identities": [
+		  {"entityType": "User", "localId": "0000-42", "displayName": "Sam Example"},
+		  {"entityType": "User", "localId": null, "displayName": "Sam Elsewhere"}]}]}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/_apis/connectionData":
 		io.WriteString(w, `{"authenticatedUser": {"providerDisplayName": "Sam Example",
 		  "properties": {"Account": {"$type": "System.String", "$value": "sam@example.com"}}}}`)
@@ -194,7 +224,8 @@ func TestGetMapsFieldsBodyAndComments(t *testing.T) {
 	if got.Fields["effort"].Text != "8.5" {
 		t.Errorf("effort %q", got.Fields["effort"].Text)
 	}
-	if len(got.Comments) != 1 || got.Comments[0].Author != "Alex Example" || got.Comments[0].Body != "Seen it *too*." {
+	if len(got.Comments) != 2 || got.Comments[0].Author != "Alex Example" || got.Comments[0].Body != "Seen it *too*." ||
+		got.Comments[1].Body != "Thanks [@Sam Example](#)" {
 		t.Errorf("comments %+v", got.Comments)
 	}
 	if _, err := p.Get(context.Background(), "DEMO-7"); err == nil {
@@ -272,5 +303,76 @@ func TestDecode(t *testing.T) {
 	}
 	if got := SplitTags("a; b ;;c"); strings.Join(got, ",") != "a,b,c" {
 		t.Errorf("SplitTags %v", got)
+	}
+}
+
+func TestAddComment(t *testing.T) {
+	f := &fakeServer{}
+	p := newTest(t, f)
+	ctx := context.Background()
+	if err := p.AddComment(ctx, "7", "", "Hi [@Sam Example](mention:0000-42), see **this**."); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.posted) != 1 {
+		t.Fatalf("posted %d comments", len(f.posted))
+	}
+	got := f.posted[0]
+	if got.query.Get("format") != "markdown" || got.query.Get("api-version") != "7.1-preview.4" {
+		t.Errorf("query %v", got.query)
+	}
+	if got.text != "Hi @<0000-42>, see **this**." {
+		t.Errorf("text %q", got.text)
+	}
+	if p.CommentFormat() != provider.CommentMarkdown || len(p.CommentKinds()) != 0 {
+		t.Errorf("format %q kinds %v", p.CommentFormat(), p.CommentKinds())
+	}
+	for _, c := range []struct{ id, kind, body string }{
+		{"DEMO-7", "", "x"},
+		{"7", provider.KindInternal, "x"},
+		{"7", "", "  \n"},
+	} {
+		if err := p.AddComment(ctx, c.id, c.kind, c.body); err == nil {
+			t.Errorf("AddComment(%q, %q, %q) was accepted", c.id, c.kind, c.body)
+		}
+	}
+	if len(f.posted) != 1 {
+		t.Errorf("a refused comment was posted")
+	}
+}
+
+func TestMentions(t *testing.T) {
+	for in, want := range map[string]string{
+		"[@Sam](mention:0000-42)":                                            "@<0000-42>",
+		"a [@Sam Example](mention:id%2042) b":                                "a @<id 42> b",
+		"`[@Sam](mention:1)` and [@Sam](mention:1)":                          "`[@Sam](mention:1)` and @<1>",
+		"```\n[@Sam](mention:1)\n```\n[@Sam](mention:1)":                     "```\n[@Sam](mention:1)\n```\n@<1>",
+		"~~~~md\n[@Sam](mention:1)\n~~~\nstill code [@Sam](mention:1)\n~~~~": "~~~~md\n[@Sam](mention:1)\n~~~\nstill code [@Sam](mention:1)\n~~~~",
+		"[link](https://example.com)":                                        "[link](https://example.com)",
+	} {
+		if got := Mentions(in); got != want {
+			t.Errorf("Mentions(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestUsers(t *testing.T) {
+	p := newTest(t, &fakeServer{})
+	users, err := p.Users(context.Background(), "7", "sam")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 || users[0].ID != "0000-42" || users[0].Name != "Sam Example" {
+		t.Errorf("users %+v", users)
+	}
+	if users, err := p.Users(context.Background(), "7", " "); err != nil || users != nil {
+		t.Errorf("empty query: %v %v", users, err)
+	}
+}
+
+func TestNewRefusesCommentKinds(t *testing.T) {
+	t.Setenv("TQ_TEST_ADO_TOKEN", "secret")
+	_, err := New(provider.Config{BaseURL: "https://example.com/org", DefaultProject: "DEMO", TokenEnv: "TQ_TEST_ADO_TOKEN", CommentKinds: []string{"internal"}})
+	if err == nil || !strings.Contains(err.Error(), "comment_kinds") {
+		t.Errorf("error %v", err)
 	}
 }

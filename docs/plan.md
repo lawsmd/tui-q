@@ -52,8 +52,8 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   `default_project` the project every query runs in. With `token_env` set the provider
   signs in with that personal access token; without it, with a token from
   `az account get-access-token`, using the program in `AZURE_CLI_PATH` when that is set.
-  A queue's query is WIQL. The provider reads only: it lists no transitions and refuses
-  writes.
+  A queue's query is WIQL. The provider lists no transitions and refuses every write
+  but a comment. Azure DevOps has one kind of comment, so `comment_kinds` is an error.
 - `[[queue]]`: name, query in the platform's own language, `layout` (`table` or `board`),
   columns or card fields, refresh interval. A board names the field its lanes group by.
   Dropping a card on a status lane runs a transition; on any other lane, a field edit.
@@ -158,6 +158,10 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   keyboard. The choice is kept per ticket until the comment is sent or discarded, or
   `tq` exits. With one kind listed every comment is that kind and the line shows no
   choice. A comment not everyone can read has its kind after its date in the list.
+- Azure DevOps takes the comment as Markdown (`format=markdown`). `@` in the box offers
+  the organisation's users from the identity picker, and a mention is sent as
+  `@<identity ID>`. Comments are read from their rendered HTML, so a mention reads back
+  as the person's name.
 - What is typed is kept as a draft per ticket, as Markdown, in the user's configuration
   directory. Leaving the ticket or quitting closes the box and keeps the draft. `discard`
   removes it, and so does sending.
@@ -179,7 +183,7 @@ and `ToTicket`, so an instance can build a queue of its own from them.
 | 3 | Board layout, drag between lanes, context menu, sideways scrolling | done; a drop reports the move and changes nothing until phase 4 |
 | 4 | Writes: transitions with required-field forms, assignment, field edits | done against the fake provider and against recorded requests; not yet run against a live site |
 | 5 | `ext.Action` and the first instance-only action | done against the fake provider; the instance action is tested against a local stand-in for the site and not yet run against a live one |
-| 6 | Azure DevOps provider and a second instance; macOS and Linux run | provider (read only) done against `httptest`; writes, second instance, macOS and Linux run not yet |
+| 6 | Azure DevOps provider and a second instance; macOS and Linux run | provider with comments done against `httptest`; other writes, second instance, macOS and Linux run not yet |
 | 7 | Disk snapshots, timed refresh, themes, remaining extension points, docs | |
 
 Outside the phases: `tq order` prints the tickets of each queue in working order for an

@@ -34,7 +34,8 @@ comment_kinds = ["internal", "public"]
 The box then shows the kinds on its line and starts on the first. A click on a kind, or
 `ctrl+k` while writing, picks the kind the comment is posted as. Jira has `public` and
 `internal`, which a service project shows as a reply to the customer and an internal
-note.
+note. Azure DevOps has one kind, takes the comment as Markdown, and offers the
+organisation's users after `@`.
 
 The box is a [slate](https://github.com/lawsmd/slate) editor. It needs Microsoft Edge or
 Chrome on the machine, and a terminal that shows Sixel images, such as Windows Terminal
