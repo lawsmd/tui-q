@@ -20,6 +20,7 @@ import (
 	"github.com/lawsmd/tui-q/internal/editor"
 	"github.com/lawsmd/tui-q/internal/hit"
 	"github.com/lawsmd/tui-q/internal/ops"
+	"github.com/lawsmd/tui-q/internal/people"
 	"github.com/lawsmd/tui-q/internal/prefs"
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/provider"
@@ -175,9 +176,11 @@ type Model struct {
 	composer *composer
 	// kinds holds, per ticket, the kind of comment picked for it where
 	// that is not the first the provider lists.
-	kinds      map[string]string
-	noEditor   string
-	drafts     *drafts.Store
+	kinds    map[string]string
+	noEditor string
+	drafts   *drafts.Store
+	// people holds the people mentioned in comments sent before.
+	people     *people.Store
 	openEditor func(editor.Config) (editor.Box, error)
 	warm       func()
 	// undo puts the screen back when the running write fails.
@@ -205,6 +208,9 @@ type Options struct {
 	// Drafts holds the comments started and not sent. When it is nil they
 	// last until the program exits.
 	Drafts *drafts.Store
+	// People holds the people mentioned in comments, who are offered first
+	// after "@". When it is nil they last until the program exits.
+	People *people.Store
 	// OpenEditor makes the box a comment is written in. When it is nil, or
 	// the provider cannot add comments, the interface offers no comment
 	// box.
@@ -222,7 +228,11 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 	if opts.Drafts == nil {
 		opts.Drafts = drafts.Open("")
 	}
+	if opts.People == nil {
+		opts.People = people.Open("")
+	}
 	m := &Model{
+		people:     opts.People,
 		prof:       prof,
 		prov:       prov,
 		prefs:      opts.Prefs,

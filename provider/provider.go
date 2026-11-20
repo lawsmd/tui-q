@@ -102,6 +102,15 @@ type Commenter interface {
 	AddComment(ctx context.Context, id, kind, body string) error
 }
 
+// Mentioner is a Provider whose search for people to mention in a comment
+// differs from Users. The comment box asks Users where a provider does not
+// implement it.
+type Mentioner interface {
+	// Mentionable lists the people who can be mentioned in a comment on a
+	// ticket and whose names match query.
+	Mentionable(ctx context.Context, id, query string) ([]ticket.User, error)
+}
+
 // CommentKind is one way a platform can post a comment, such as a reply
 // everyone on the ticket sees or a note kept to the team working it.
 type CommentKind struct {

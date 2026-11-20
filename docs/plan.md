@@ -162,6 +162,11 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   the organisation's users from the identity picker, and a mention is sent as
   `@<identity ID>`. Comments are read from their rendered HTML, so a mention reads back
   as the person's name.
+- On Jira, `@` searches the people who can see the issue (`provider.Mentioner`), and the
+  editor writes the mention as a `mention` node with the account ID.
+- The people mentioned in a sent comment are kept per site (`internal/people`, at most
+  50, most recent first). `@` lists the ones that match what is typed and asks the
+  platform only when none does.
 - What is typed is kept as a draft per ticket, as Markdown, in the user's configuration
   directory. Leaving the ticket or quitting closes the box and keeps the draft. `discard`
   removes it, and so does sending.

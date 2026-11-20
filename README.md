@@ -34,8 +34,14 @@ comment_kinds = ["internal", "public"]
 The box then shows the kinds on its line and starts on the first. A click on a kind, or
 `ctrl+k` while writing, picks the kind the comment is posted as. Jira has `public` and
 `internal`, which a service project shows as a reply to the customer and an internal
-note. Azure DevOps has one kind, takes the comment as Markdown, and offers the
-organisation's users after `@`.
+note. Azure DevOps has one kind and takes the comment as Markdown.
+
+Typing `@` and part of a name lists people to mention. People mentioned in a comment sent
+before are listed first, from a file kept per site in the user's configuration directory
+(`tui-q/people`), and no request is made while one of them matches. When none matches,
+Jira is searched for people who can see the ticket and Azure DevOps for the
+organisation's users. To reach a person who is not yet in the file, type more of the
+name.
 
 The box is a [slate](https://github.com/lawsmd/slate) editor. It needs Microsoft Edge or
 Chrome on the machine.

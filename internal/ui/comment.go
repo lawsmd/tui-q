@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lawsmd/tui-q/internal/editor"
+	"github.com/lawsmd/tui-q/internal/people"
 	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
 )
@@ -75,8 +76,10 @@ type draftSaveMsg struct{ n int }
 // commentedMsg reports a comment that was sent. changed is what the read
 // back of the ticket gave.
 type commentedMsg struct {
-	id      string
-	changed tea.Msg
+	id string
+	// mentioned is the people the comment mentions.
+	mentioned []ticket.User
+	changed   tea.Msg
 }
 
 // commenter returns the provider's way to add a comment, or nil when the
@@ -172,15 +175,28 @@ func (m *Model) openComposer(t ticket.Ticket) tea.Cmd {
 		Background: m.styles.ComposerBack,
 		// The editor calls this from its own goroutine while the user
 		// types a name, so it does not go through the operation runner.
-		Mentions: func(ctx context.Context, query string) ([]ticket.User, error) {
-			return m.prov.Users(ctx, t.ID, query)
-		},
+		Mentions: mentions(m.prov, m.people, t.ID),
 	}
 	// Opening starts a page in a browser, which takes too long for Update.
 	return m.start("Opening the comment box", false, func(context.Context) (tea.Msg, error) {
 		box, err := open(cfg)
 		return composerOpenedMsg{id: t.ID, box: box, err: err}, nil
 	})
+}
+
+// mentions returns what finds the people offered after "@" in a comment on
+// one ticket. People mentioned before are offered without asking the
+// platform, which is asked only when none of them match what was typed.
+func mentions(prov provider.Provider, known *people.Store, id string) func(context.Context, string) ([]ticket.User, error) {
+	return func(ctx context.Context, query string) ([]ticket.User, error) {
+		if found := known.Match(query); len(found) > 0 {
+			return found, nil
+		}
+		if mp, ok := prov.(provider.Mentioner); ok {
+			return mp.Mentionable(ctx, id, query)
+		}
+		return prov.Users(ctx, id, query)
+	}
 }
 
 // composerOpened takes the editor that openComposer asked for.
@@ -302,6 +318,7 @@ func (m *Model) sendComment() tea.Cmd {
 		return nil
 	}
 	box, id, key := c.box, c.id, c.key
+	mentioned := people.Links(c.box.Text())
 	kind, what := m.commentKind(id), "Commented on "+key
 	for _, k := range cm.CommentKinds() {
 		if k.ID == kind {
@@ -316,7 +333,7 @@ func (m *Model) sendComment() tea.Cmd {
 		if err := cm.AddComment(ctx, id, kind, body); err != nil {
 			return nil, fmt.Errorf("%s: %w", key, err)
 		}
-		return commentedMsg{id: id, changed: m.reloaded(ctx, id, what)}, nil
+		return commentedMsg{id: id, mentioned: mentioned, changed: m.reloaded(ctx, id, what)}, nil
 	})
 }
 
@@ -330,6 +347,9 @@ func (m *Model) commented(msg commentedMsg) {
 	if err := m.drafts.Set(msg.id, ""); err != nil {
 		m.notice = "Removing the draft failed: " + err.Error()
 	}
+	// The people mentioned are offered first after the next "@". Failing to
+	// save them costs a search and is not worth a notice.
+	_ = m.people.Note(msg.mentioned...)
 }
 
 // ticketBody is the part of a ticket view's area under its row of

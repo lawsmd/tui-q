@@ -292,6 +292,41 @@ func (p *Provider) Users(ctx context.Context, id, query string) ([]ticket.User, 
 	return out, nil
 }
 
+// Mentionable lists the people who can see an issue whose names match
+// query. Jira tells a person of a mention only when they can see the
+// issue. Apps, customers of a service project and closed accounts are left
+// out. Jira finds nobody for a blank query, which is answered with the
+// people the issue can be assigned to.
+func (p *Provider) Mentionable(ctx context.Context, id, query string) ([]ticket.User, error) {
+	if strings.TrimSpace(query) == "" {
+		return p.Users(ctx, id, query)
+	}
+	var resp []struct {
+		AccountID   string `json:"accountId"`
+		AccountType string `json:"accountType"`
+		DisplayName string `json:"displayName"`
+		Active      *bool  `json:"active"`
+	}
+	// Apps count towards the most Jira returns and can outnumber the
+	// people, so more accounts are asked for than are kept.
+	path := "/rest/api/3/user/viewissue/search?issueKey=" + url.QueryEscape(id) +
+		"&query=" + url.QueryEscape(query) + "&maxResults=" + strconv.Itoa(5*userLimit)
+	if err := p.client.Do(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return nil, err
+	}
+	out := make([]ticket.User, 0, userLimit)
+	for _, u := range resp {
+		if (u.AccountType != "" && u.AccountType != "atlassian") || (u.Active != nil && !*u.Active) {
+			continue
+		}
+		if len(out) == userLimit {
+			break
+		}
+		out = append(out, ticket.User{ID: u.AccountID, Name: u.DisplayName})
+	}
+	return out, nil
+}
+
 // FieldLabels gives Jira's name for each custom field the profile maps.
 func (p *Provider) FieldLabels(ctx context.Context) (map[string]string, error) {
 	var resp []struct {

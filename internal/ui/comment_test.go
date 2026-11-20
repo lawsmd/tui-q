@@ -10,9 +10,11 @@ import (
 
 	"github.com/lawsmd/tui-q/internal/drafts"
 	"github.com/lawsmd/tui-q/internal/editor"
+	"github.com/lawsmd/tui-q/internal/people"
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/provider/fake"
+	"github.com/lawsmd/tui-q/ticket"
 )
 
 // fakeBox stands in for the editor. It records what the model did with it.
@@ -485,6 +487,72 @@ func TestLeavingTheTicketKeepsTheDraft(t *testing.T) {
 	}
 }
 
+// mentioner is a provider with its own search for people to mention.
+type mentioner struct {
+	provider.Provider
+	asked []string
+}
+
+func (p *mentioner) Mentionable(_ context.Context, _, query string) ([]ticket.User, error) {
+	p.asked = append(p.asked, query)
+	return []ticket.User{{ID: "u-7", Name: "Robin Reader"}}, nil
+}
+
+func TestMentionsOfferPeopleMentionedBeforeWithoutASearch(t *testing.T) {
+	known := people.Open("")
+	prov := &mentioner{Provider: fake.New(0)}
+	find := mentions(prov, known, "DEMO-101")
+	ctx := context.Background()
+
+	// With nobody kept, the provider's own search for mentions is asked.
+	got, err := find(ctx, "ro")
+	if err != nil || len(got) != 1 || got[0].ID != "u-7" || len(prov.asked) != 1 {
+		t.Fatalf("found %+v, %v after asking %v", got, err, prov.asked)
+	}
+	if err := known.Note(ticket.User{ID: "u-1", Name: "Rowan Kept"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{"", "ro"} {
+		got, err = find(ctx, query)
+		if err != nil || len(got) != 1 || got[0].ID != "u-1" {
+			t.Fatalf("query %q found %+v, %v", query, got, err)
+		}
+	}
+	if len(prov.asked) != 1 {
+		t.Fatalf("a kept person matched, and the provider was still asked: %v", prov.asked)
+	}
+	// A name nobody kept matches goes to the provider.
+	if got, _ = find(ctx, "rob"); len(got) != 1 || got[0].ID != "u-7" || len(prov.asked) != 2 {
+		t.Fatalf("found %+v after asking %v", got, prov.asked)
+	}
+}
+
+func TestSendingACommentKeepsThePeopleItMentions(t *testing.T) {
+	m, eds := newCommenting(t, 110, 30, Options{})
+	b := openBox(t, m, eds)
+	b.text = "over to [@Sam Sample](mention:u%3A2)"
+	send(t, m, editor.Changed{})
+
+	m.prov.(*fake.Provider).FailWrites = errors.New("the site said no")
+	clickLayer(t, m, idCommentSend)
+	if got := m.people.Match(""); len(got) != 0 {
+		t.Fatalf("a failed send kept %+v", got)
+	}
+	m.ops.Dismiss()
+	m.prov.(*fake.Provider).FailWrites = nil
+
+	clickLayer(t, m, idCommentSend)
+	want := ticket.User{ID: "u:2", Name: "Sam Sample"}
+	if got := m.people.Match("sam"); len(got) != 1 || got[0] != want {
+		t.Fatalf("kept %+v, want %+v", got, want)
+	}
+	// The next box offers that person without a search.
+	found, err := eds.box(t).cfg.Mentions(context.Background(), "")
+	if err != nil || len(found) != 1 || found[0] != want {
+		t.Fatalf("offered %+v, %v", found, err)
+	}
+}
+
 func TestSendingAComment(t *testing.T) {
 	m, eds := newCommenting(t, 110, 30, Options{})
 	b := openBox(t, m, eds)
@@ -523,6 +591,9 @@ func TestSendingAComment(t *testing.T) {
 	}
 	if !b.closed || m.drafts.Get(id) != "" {
 		t.Fatalf("after sending: closed=%v draft=%q", b.closed, m.drafts.Get(id))
+	}
+	if got := m.people.Match(""); len(got) != 0 {
+		t.Fatalf("a comment that mentions nobody left %+v", got)
 	}
 	if got := len(m.tabs[0].t.Comments); got != before+1 || !strings.Contains(m.notice, "Commented on") {
 		t.Fatalf("the open ticket has %d comments, notice %q", got, m.notice)

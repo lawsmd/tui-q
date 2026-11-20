@@ -111,6 +111,12 @@ func newServer(t *testing.T) *server {
 			io.WriteString(w, `{"accountId": "me-1", "displayName": "Sam Example"}`)
 		case r.URL.Path == "/rest/api/3/user/assignable/search":
 			io.WriteString(w, `[{"accountId": "u-2", "displayName": "Alex Example"}]`)
+		case r.URL.Path == "/rest/api/3/user/viewissue/search":
+			io.WriteString(w, `[
+				{"accountId": "u-2", "accountType": "atlassian", "displayName": "Alex Example", "active": true},
+				{"accountId": "u-3", "accountType": "app", "displayName": "Alex Bot", "active": true},
+				{"accountId": "u-4", "accountType": "customer", "displayName": "Alex Customer", "active": true},
+				{"accountId": "u-5", "accountType": "atlassian", "displayName": "Alex Gone", "active": false}]`)
 		case r.URL.Path == "/rest/api/3/field":
 			io.WriteString(w, `[{"id": "field_43", "name": "Sales regions"}, {"id": "field_99", "name": "Unused"}, {"id": "labels", "name": "Labels"}]`)
 		case r.URL.Path == "/rest/api/3/issue/MISSING-1":
@@ -360,6 +366,16 @@ func TestAccountUsersAndFieldLabels(t *testing.T) {
 	users, err := p.Users(ctx, "DEMO-7", "al ex")
 	if err != nil || len(users) != 1 || users[0].ID != "u-2" {
 		t.Fatalf("Users = %+v, %v", users, err)
+	}
+	var _ provider.Mentioner = p
+	users, err = p.Mentionable(ctx, "DEMO-7", "alex")
+	if err != nil || len(users) != 1 || users[0] != (ticket.User{ID: "u-2", Name: "Alex Example"}) {
+		t.Fatalf("Mentionable = %+v, %v", users, err)
+	}
+	// A blank query is answered by the search for people to assign.
+	users, err = p.Mentionable(ctx, "DEMO-7", " ")
+	if err != nil || len(users) != 1 || users[0].ID != "u-2" {
+		t.Fatalf("Mentionable with no query = %+v, %v", users, err)
 	}
 	labels, err := p.FieldLabels(ctx)
 	if err != nil || len(labels) != 2 || labels["regions"] != "Sales regions" || labels["labels"] != "Labels" {

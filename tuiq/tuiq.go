@@ -13,6 +13,7 @@ import (
 	"github.com/lawsmd/tui-q/ext"
 	"github.com/lawsmd/tui-q/internal/drafts"
 	"github.com/lawsmd/tui-q/internal/editor"
+	"github.com/lawsmd/tui-q/internal/people"
 	"github.com/lawsmd/tui-q/internal/prefs"
 	"github.com/lawsmd/tui-q/internal/ui"
 	"github.com/lawsmd/tui-q/profile"
@@ -109,6 +110,9 @@ func Run(opts ...Option) error {
 	}
 	if dir, err := drafts.Dir(site); err == nil {
 		uiOpts.Drafts = drafts.Open(dir)
+	}
+	if path, err := people.Path(site); err == nil {
+		uiOpts.People = people.Open(path)
 	}
 	// The comment box is an editor drawn by a browser, which is started
 	// when the first ticket is shown and stopped here.

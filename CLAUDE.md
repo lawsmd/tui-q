@@ -60,6 +60,7 @@ into this repository.
 | `internal/prefs` | settings changed from inside the interface, saved per site |
 | `internal/editor` | the comment box: a slate editor behind the `Box` interface |
 | `internal/drafts` | comments started and not sent, as Markdown, saved per site and ticket |
+| `internal/people` | people mentioned in sent comments, saved per site and offered first after `@` |
 | `internal/browser` | opens a URL in the default browser |
 | `scripts/check-names` | the naming guard |
 
