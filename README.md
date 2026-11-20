@@ -18,7 +18,7 @@ demo provider. Platform providers, boards with drag and drop, and writes are pla
 
 ## Comments
 
-Every ticket view has a comment box after the description and before the comments,
+Every ticket view has a comment box under the heading of the comments, beside the newest,
 drawn on a grey of its own. `c` or a click in the box gives it the keyboard, and it grows
 while it is written in. `ctrl+s` or `send`
 posts the comment, `esc` gives the keyboard back to the ticket, and what was typed is

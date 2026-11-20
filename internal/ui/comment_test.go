@@ -260,11 +260,11 @@ func TestCommentBoxFitsEveryPane(t *testing.T) {
 	}
 }
 
-func TestCommentBoxIsBetweenTheFieldsAndTheComments(t *testing.T) {
+func TestCommentBoxIsUnderTheCommentsHeading(t *testing.T) {
 	m, eds := newCommenting(t, 110, 60, Options{})
 	b := openBox(t, m, eds)
 	if len(m.tabs[0].t.Comments) == 0 {
-		t.Fatal("the fixture ticket has no comments to put the box before")
+		t.Fatal("the fixture ticket has no comments to put the box among")
 	}
 	lines := strings.Split(screen(m), "\n")
 	row := func(text string) int {
@@ -276,10 +276,23 @@ func TestCommentBoxIsBetweenTheFieldsAndTheComments(t *testing.T) {
 		t.Fatalf("screen lacks %q\n%s", text, strings.Join(lines, "\n"))
 		return -1
 	}
+	// The heading, a blank line, the box's line and its editor.
 	box, comments := row(" Comment "), row("Comments (")
-	if box != b.rect.y-1 || comments != b.rect.y+b.rect.h+1 || box < 4 {
-		t.Fatalf("box line on row %d, editor at %+v, comments on row %d", box, b.rect, comments)
+	if box != b.rect.y-1 || comments != box-2 || box < 4 {
+		t.Fatalf("box line on row %d, editor at %+v, comments heading on row %d", box, b.rect, comments)
 	}
+
+	// With the oldest comment first, the box follows the comments.
+	m.prefs.CommentsOldestFirst = true
+	m.tabs[0].main = nil
+	send(t, m, odd{})
+	lines = strings.Split(screen(m), "\n")
+	if box, comments := row(" Comment "), row("Comments ("); box <= comments+2 || box != b.rect.y-1 {
+		t.Fatalf("oldest first: box line on row %d, editor at %+v, comments heading on row %d", box, b.rect, comments)
+	}
+	m.prefs.CommentsOldestFirst = false
+	m.tabs[0].main = nil
+	send(t, m, odd{})
 
 	// The box scrolls with the ticket.
 	was := b.rect
@@ -339,7 +352,7 @@ func TestKeysGoToTheCommentBoxOnlyWhileItHasTheKeyboard(t *testing.T) {
 }
 
 func TestMouseInsideTheCommentBoxIsTheBoxes(t *testing.T) {
-	m, eds := newCommenting(t, 110, 30, Options{})
+	m, eds := newCommenting(t, 110, 60, Options{})
 	b := openBox(t, m, eds)
 	tab := m.tabs[0]
 	x, y := b.rect.x+3, b.rect.y+1

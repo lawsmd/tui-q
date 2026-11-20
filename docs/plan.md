@@ -128,8 +128,8 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   the write fails, or the platform asks for values first, the card goes back. A move
   that requires fields opens a form for them.
 - After every write the ticket is read back and every queue reloads.
-- Every ticket view has a comment box in its main column, after the fields and before
-  the comments, and it scrolls with them. The box is one line with its name and buttons, then the rows of a
+- Every ticket view has a comment box in its main column, under the heading of the
+  comments and beside the newest one, and it scrolls with them. The box is one line with its name and buttons, then the rows of a
   slate editor (`github.com/lawsmd/slate`), which a headless browser draws and the
   terminal shows as a Sixel image. `internal/editor` is the only package that imports it.
 - The line and the editor are drawn on one grey (`Styles.ComposerBack`), lighter than a

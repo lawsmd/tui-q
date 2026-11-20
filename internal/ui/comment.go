@@ -15,8 +15,8 @@ import (
 	"github.com/lawsmd/tui-q/ticket"
 )
 
-// The comment box is part of every ticket view, after the fields of the
-// main column and before the comments, and scrolls with them: one line
+// The comment box is part of every ticket view, under the heading of the
+// comments and beside the newest one, and scrolls with them: one line
 // that names it and holds its buttons, and the rows of the editor under
 // that line. It is short while the keyboard is elsewhere and grows when it
 // is written in. The editor is placed over the rows that are in view.

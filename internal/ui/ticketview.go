@@ -46,7 +46,7 @@ type ticketTab struct {
 	// main caches the rendered main column for one width, with the place
 	// of each clickable label in it. Rendering Markdown on every frame
 	// would make scrolling slow. mainBox is the line the comment box goes
-	// before: the first after the fields. mainLoading is whether the ticket was
+	// before: under the heading of the comments, beside the newest. mainLoading is whether the ticket was
 	// still loading then, which changes what an empty comments section says.
 	main        []string
 	mainLabels  []labelLine
@@ -87,8 +87,8 @@ func (tab *ticketTab) shows(name string) bool {
 }
 
 // layers draws the ticket: a row of buttons, then the title, the main
-// column and the sidebar, the comment box after the fields of the main
-// column, with a clickable layer over the label of each
+// column and the sidebar, the comment box under the heading of the
+// comments, with a clickable layer over the label of each
 // field that can be changed. In a wide pane the title and the sidebar stay
 // in place while the main column scrolls. In a narrow one the title, the
 // sidebar and the main column scroll as one column.
@@ -302,6 +302,10 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 		}
 		lines = append(lines, "")
 	}
+	// The comment box goes under the heading of the comments, beside the
+	// newest comment: before the comments when the newest is first, after
+	// them when it is last. Without comments in the profile it ends the
+	// column.
 	tab.mainBox = len(lines)
 	if m.prof.Ticket.Comments && len(tab.t.Comments) == 0 {
 		// A ticket opened from a queue carries no comments until its full
@@ -310,7 +314,9 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 		if tab.loading {
 			empty = "loading..."
 		}
-		lines = append(lines, s.rule("Comments", w), "", s.Faint.Render(empty), "")
+		lines = append(lines, s.rule("Comments", w), "")
+		tab.mainBox = len(lines)
+		lines = append(lines, s.Faint.Render(empty), "")
 	}
 	if m.prof.Ticket.Comments && len(tab.t.Comments) > 0 {
 		oldestFirst := m.prefs.CommentsOldestFirst
@@ -333,6 +339,7 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 			labels = append(labels, labelLine{line: len(lines), x: x, text: s.Label.Render(control)})
 		}
 		lines = append(lines, s.rule(heading, w), "")
+		tab.mainBox = len(lines)
 
 		colours := commenterColours(tab.t.Comments, s.Commenters)
 		for _, c := range comments {
@@ -350,6 +357,9 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 				text[i] = pad(line, w-4)
 			}
 			lines = append(lines, titledBox(title, text, w, border)...)
+		}
+		if oldestFirst {
+			tab.mainBox = len(lines)
 		}
 	}
 	tab.main, tab.mainLabels, tab.mainWidth, tab.mainLoading = lines, labels, w, tab.loading
