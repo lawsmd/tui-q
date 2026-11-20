@@ -25,7 +25,7 @@ const (
 	// composerIdleRows is the most rows the editor has while the keyboard
 	// is elsewhere, and composerRows the most it has while written in.
 	composerIdleRows = 3
-	composerRows     = 14
+	composerRows     = 21
 	// composerSmallRows is the fewest rows a box being written in has,
 	// where the pane has that many.
 	composerSmallRows = 4
@@ -359,7 +359,7 @@ func ticketBody(content area) area {
 }
 
 // editorRows is how many rows the editor of the comment box has in a
-// column h rows high. Written in, it has half the column, and never more
+// column h rows high. Written in, it has three quarters of the column, and never more
 // than leaves its line in view with it.
 func editorRows(c *composer, h int) int {
 	if c == nil || c.box == nil || h < 2 {
@@ -368,7 +368,7 @@ func editorRows(c *composer, h int) int {
 	if !c.writing {
 		return min(composerIdleRows, h-1)
 	}
-	return min(clamp(h/2, composerSmallRows, composerRows), h-1)
+	return min(clamp(h*3/4, composerSmallRows, composerRows), h-1)
 }
 
 // boxPlace is where the comment box of a ticket view is. The box has
