@@ -71,13 +71,16 @@ type Styles struct {
 	// CommentBorder frames one comment, and CommentAuthor names who wrote it.
 	// Both are drawn in the commenter's colour when Commenters has one.
 	CommentBorder lipgloss.Style
-	// ComposerBack is the colour the comment box is drawn on, as "#rrggbb":
-	// a little lighter than the terminal's own, which shows where the box
-	// is. Composer is the line of the box, and ComposerFocus its name while
-	// the box has the keyboard.
-	ComposerBack  string
-	Composer      lipgloss.Style
-	ComposerFocus lipgloss.Style
+	// ComposerBack is the colour the editor of the comment box is drawn on,
+	// as "#rrggbb": a little lighter than the terminal's own. Composer is
+	// the cells the editor draws over. ComposerBorder frames the box, in one
+	// grey whoever writes. ComposerName is the name in the border, and
+	// ComposerFocus the name while the box has the keyboard.
+	ComposerBack   string
+	Composer       lipgloss.Style
+	ComposerBorder lipgloss.Style
+	ComposerName   lipgloss.Style
+	ComposerFocus  lipgloss.Style
 	// ComposerKind is a kind of comment the box can post, and
 	// ComposerKindOn the kind it will post.
 	ComposerKind   lipgloss.Style
@@ -177,7 +180,9 @@ func DefaultStyles() Styles {
 		CommentBorder:  lipgloss.NewStyle().Foreground(dim),
 		ComposerBack:   composerBack,
 		Composer:       lipgloss.NewStyle().Background(lipgloss.Color(composerBack)).Foreground(text),
-		ComposerFocus:  lipgloss.NewStyle().Background(lipgloss.Color(composerBack)).Foreground(accent).Bold(true),
+		ComposerBorder: lipgloss.NewStyle().Foreground(lipgloss.Color("#8a8d98")),
+		ComposerName:   lipgloss.NewStyle().Foreground(text).Bold(true),
+		ComposerFocus:  lipgloss.NewStyle().Foreground(accent).Bold(true),
 		ComposerKind:   lipgloss.NewStyle().Background(lipgloss.Color(composerBack)).Foreground(dim),
 		ComposerKindOn: lipgloss.NewStyle().Background(accent).Foreground(onLight).Bold(true),
 		CommentAuthor:  lipgloss.NewStyle().Foreground(text).Bold(true),
@@ -265,18 +270,29 @@ func box(lines []string, w int, border lipgloss.Style) []string {
 // titledBox is box with a title set into the top border. The title may be
 // styled; it is cut when the border has no room for it.
 func titledBox(title string, lines []string, w int, border lipgloss.Style) []string {
-	rule := strings.Repeat("─", max(w-2, 0))
-	top := border.Render("╭" + rule + "╮")
-	if title = ruleTitle(title, w); title != "" {
-		rest := strings.Repeat("─", w-5-lipgloss.Width(title))
-		top = border.Render("╭─ ") + title + border.Render(" "+rest+"╮")
-	}
+	return frame(title, lines, w, " ", border)
+}
+
+// frame draws a rounded border around lines, with pad between the border
+// and each line. Every line must already be as wide as that leaves: w less
+// the two borders and the two pads.
+func frame(title string, lines []string, w int, pad string, border lipgloss.Style) []string {
 	out := make([]string, 0, len(lines)+2)
-	out = append(out, top)
+	out = append(out, frameTop(title, w, border))
 	for _, line := range lines {
-		out = append(out, border.Render("│ ")+line+border.Render(" │"))
+		out = append(out, border.Render("│"+pad)+line+border.Render(pad+"│"))
 	}
-	return append(out, border.Render("╰"+rule+"╯"))
+	return append(out, border.Render("╰"+strings.Repeat("─", max(w-2, 0))+"╯"))
+}
+
+// frameTop is the top border of a frame w cells wide, with the title set
+// into it when it has room for one.
+func frameTop(title string, w int, border lipgloss.Style) string {
+	if title = ruleTitle(title, w); title == "" {
+		return border.Render("╭" + strings.Repeat("─", max(w-2, 0)) + "╮")
+	}
+	rest := strings.Repeat("─", w-5-lipgloss.Width(title))
+	return border.Render("╭─ ") + title + border.Render(" "+rest+"╮")
 }
 
 // ruleIndent is how far into a rule or a titled border its title starts.

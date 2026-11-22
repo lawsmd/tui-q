@@ -74,8 +74,12 @@ into this repository.
 - `Model.Update` passes every message it has no use for to the comment box
   (`composerPass`), and `syncComposer` runs after every message to open the box for the
   ticket on screen, to place it, and to cover it while a menu or form is open. A message
-  dropped on the way leaves the box frozen. The rows under the box's line hold blank
-  cells of the box's colour and never text, which would wipe out the editor's image. The
+  dropped on the way leaves the box frozen. The box is a border with the editor inside
+  it. The editor holds the text of the comment and nothing else: the name of the box,
+  the kinds of comment and the buttons are layers on the top of the border
+  (`composerLayers`), and anything new the box needs to show or offer goes there too.
+  The rows inside the border hold blank cells of the editor's colour and never text,
+  which would wipe out the editor's image. The
   box scrolls with the ticket, so `placeBox` decides where it is for the frame and for
   the editor alike. `TestCommentBoxFitsEveryPane` checks the box across pane sizes and
   scroll positions.

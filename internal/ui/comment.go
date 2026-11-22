@@ -8,7 +8,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lawsmd/tui-q/internal/editor"
 	"github.com/lawsmd/tui-q/internal/people"
@@ -359,22 +358,30 @@ func ticketBody(content area) area {
 }
 
 // editorRows is how many rows the editor of the comment box has in a
-// column h rows high. Written in, it has three quarters of the column, and never more
-// than leaves its line in view with it.
+// column h rows high. Written in, it has three quarters of the column, and
+// never more than leaves the border above and below it in view with it,
+// where the column has the three rows that takes.
 func editorRows(c *composer, h int) int {
 	if c == nil || c.box == nil || h < 2 {
 		return 0
 	}
+	room := max(h-2, 1)
 	if !c.writing {
-		return min(composerIdleRows, h-1)
+		return min(composerIdleRows, room)
 	}
-	return min(clamp(h*3/4, composerSmallRows, composerRows), h-1)
+	return min(clamp(h*3/4, composerSmallRows, composerRows), room)
 }
 
+// boxLines is how many lines of the main column the comment box takes
+// besides the rows of its editor: the border above, the border below, and a
+// blank line.
+const boxLines = 3
+
 // boxPlace is where the comment box of a ticket view is. The box has
-// rows+2 lines among those of the main column: its own line, the rows of
-// the editor, and a blank line. line and rect are the parts of it in view,
-// in cells of the window, and have no height when out of view.
+// rows+boxLines lines among those of the main column. line is the border
+// above the editor, which holds the box's name and buttons, and rect is the
+// editor: everything inside the border and nothing else. Both are the parts
+// in view, in cells of the window, and have no height when out of view.
 type boxPlace struct {
 	on   bool
 	rows int
@@ -397,20 +404,33 @@ func (tab *ticketTab) placeBox(m *Model, c area, n, at int) boxPlace {
 	p := boxPlace{on: true, rows: editorRows(cm, c.h)}
 	if cm != nil && cm.reveal {
 		cm.reveal = false
-		if end := at + p.rows + 1; end > tab.offset+c.h {
+		if end := at + p.rows + 2; end > tab.offset+c.h {
 			tab.offset = end - c.h
 		}
 		tab.offset = min(tab.offset, at)
 	}
-	tab.offset = clamp(tab.offset, 0, n+p.rows+2-c.h)
+	tab.offset = clamp(tab.offset, 0, n+p.rows+boxLines-c.h)
 	if row := at - tab.offset; row >= 0 && row < c.h {
 		p.line = area{x: c.x, y: c.y + row, w: c.w, h: 1}
 	}
 	top, bottom := max(at+1-tab.offset, 0), min(at+1+p.rows-tab.offset, c.h)
-	if bottom > top {
-		p.rect = area{x: c.x, y: c.y + top, w: c.w, h: bottom - top}
+	if bottom > top && c.w > 2 {
+		p.rect = area{x: c.x + 1, y: c.y + top, w: c.w - 2, h: bottom - top}
 	}
 	return p
+}
+
+// composerLines are the lines the comment box has in a column w cells wide:
+// a border around rows of blank cells in the colour the editor is drawn
+// on, and a blank line. The editor draws its picture over the blank cells.
+// Text put there would wipe the picture out; the blank cells do not, and
+// they clear what a picture leaves behind where the box was.
+func (s Styles) composerLines(w, rows int) []string {
+	inside := make([]string, rows)
+	for i := range inside {
+		inside[i] = s.Composer.Render(strings.Repeat(" ", max(w-2, 0)))
+	}
+	return append(frame("", inside, w, "", s.ComposerBorder), "")
 }
 
 // composerPlace is where the comment box of the ticket on screen is.
@@ -558,11 +578,13 @@ func (m *Model) composerChanged() tea.Cmd {
 	return tea.Batch(c.box.Changes(), tea.Tick(draftDelay, func(time.Time) tea.Msg { return draftSaveMsg{n: n} }))
 }
 
-// composerLayers draws the parts of the comment box in view: its line,
-// with its name and its buttons, and the rows of the editor as blank cells
-// of the colour the editor is drawn on. The editor draws its picture over
-// those cells. Text put there would wipe the picture out; the blank cells
-// do not, and they clear what a picture leaves behind where the box was.
+// composerName is what the border of the comment box calls it.
+const composerName = "Write a comment"
+
+// composerLayers draws the border above the editor of the comment box when
+// it is in view: the name of the box, the kinds of comment and the buttons.
+// Everything about the box that can be read or clicked is on that border.
+// The rest of the box is drawn with the column, from composerLines.
 func (m *Model) composerLayers(t ticket.Ticket, at boxPlace) []*lipgloss.Layer {
 	s := m.styles
 	c := m.composer
@@ -570,30 +592,33 @@ func (m *Model) composerLayers(t ticket.Ticket, at boxPlace) []*lipgloss.Layer {
 		c = nil
 	}
 	var layers []*lipgloss.Layer
-	if r := at.rect; r.h > 0 {
-		row := s.Composer.Render(strings.Repeat(" ", r.w))
-		rows := strings.TrimSuffix(strings.Repeat(row+"\n", r.h), "\n")
-		layers = append(layers, lipgloss.NewLayer(rows).X(r.x).Y(r.y).Z(zItem))
-	}
 	panel := at.line
 	if panel.h == 0 {
 		return layers
 	}
 	open := c != nil && c.box != nil
-	name := s.Composer.Render(" Comment ")
+	name := s.ComposerName.Render(composerName)
 	if open && c.writing {
-		name = s.ComposerFocus.Render(" Comment ")
+		name = s.ComposerFocus.Render(composerName)
 	}
+	// The border says why when the editor did not open, since there is then
+	// no box to see.
+	if c == nil && m.noEditor != "" {
+		name += s.Faint.Render(" did not open: " + m.noEditor)
+	}
+	name = ruleTitle(name, panel.w)
+	// The name ends where the border after it begins.
+	used := ruleIndent + lipgloss.Width(name) + 1
 
-	// The buttons are at the right-hand end of the line. One that does not
-	// fit beside the name is left out; its key still works.
-	right := panel.x + panel.w - 1
+	// The buttons are at the right-hand end of the border. One that does
+	// not fit beside the name is left out; its key still works.
+	right := panel.x + panel.w - 2
 	if open {
 		buttons := []struct{ id, text string }{{idCommentSend, "send"}, {idCommentDiscard, "discard"}}
 		for i := len(buttons) - 1; i >= 0; i-- {
 			text := s.Button.Render(buttons[i].text)
 			x := right - lipgloss.Width(text)
-			if x < panel.x+lipgloss.Width(name) {
+			if x < panel.x+used {
 				continue
 			}
 			layers = append(layers, lipgloss.NewLayer(text).ID(buttons[i].id).X(x).Y(panel.y).Z(zButton))
@@ -603,7 +628,6 @@ func (m *Model) composerLayers(t ticket.Ticket, at boxPlace) []*lipgloss.Layer {
 
 	// The kinds of comment follow the name, with the one the comment will
 	// be posted as marked. A click on a kind picks it.
-	used := lipgloss.Width(name)
 	if cm := m.commenter(); open && cm != nil {
 		if kinds := cm.CommentKinds(); len(kinds) > 1 {
 			now, x := m.commentKind(t.ID), panel.x+used
@@ -622,12 +646,7 @@ func (m *Model) composerLayers(t ticket.Ticket, at boxPlace) []*lipgloss.Layer {
 		}
 	}
 
-	// The line itself can be clicked to write. It says why when the editor
-	// did not open, since there is then no box to see.
-	text := name
-	if room := right - panel.x - lipgloss.Width(name); c == nil && m.noEditor != "" && room >= 8 {
-		text += s.Composer.Render(ansi.Truncate("did not open: "+m.noEditor, room, "…"))
-	}
-	text += s.Composer.Render(strings.Repeat(" ", max(panel.w-lipgloss.Width(text), 0)))
-	return append(layers, lipgloss.NewLayer(text).ID(idComment).X(panel.x).Y(panel.y).Z(zItem))
+	// The border itself can be clicked to write.
+	top := frameTop(name, panel.w, s.ComposerBorder)
+	return append(layers, lipgloss.NewLayer(top).ID(idComment).X(panel.x).Y(panel.y).Z(zItem))
 }

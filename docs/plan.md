@@ -129,34 +129,40 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   that requires fields opens a form for them.
 - After every write the ticket is read back and every queue reloads.
 - Every ticket view has a comment box in its main column, under the heading of the
-  comments and beside the newest one, and it scrolls with them. The box is one line with its name and buttons, then the rows of a
+  comments and beside the newest one, and it scrolls with them. The box is a border, drawn
+  as the border of a comment is, around the rows of a
   slate editor (`github.com/lawsmd/slate`), which a headless browser draws and the
   terminal shows as a Sixel image. `internal/editor` is the only package that imports it.
-- The line and the editor are drawn on one grey (`Styles.ComposerBack`), lighter than a
-  dark terminal's own colour, which marks the box as a place to click. The line carries
-  no words on how to use it.
-- Idle, the editor has three rows. Written in, it has half the rows of the column,
-  fourteen at most, and the ticket scrolls until the whole box is in view. The editor is
-  placed over the rows of the box that are in view, and stops drawing when none is.
-- The rows of the editor are drawn as blank cells of the box's grey. The editor's image
+- The border is one grey whoever writes (`Styles.ComposerBorder`). Its top holds the name
+  of the box, "Write a comment", then the kinds of comment, and the `discard` and `send`
+  buttons at its right-hand end. The editor is the rectangle inside the border and holds
+  the text of the comment only: tui-q draws every name, choice and button of the box
+  itself, in cells. The border carries no words on how to use the box.
+- The editor is drawn on a grey of its own (`Styles.ComposerBack`), lighter than a dark
+  terminal's own colour.
+- Idle, the editor has three rows. Written in, it has three quarters of the rows of the
+  column, twenty-one at most, and the ticket scrolls until the whole box is in view. The
+  editor is placed over the rows of the box that are in view, and stops drawing when none
+  is.
+- The rows of the editor are drawn as blank cells of the editor's grey. The editor's image
   goes over them, and they clear what the image leaves where the box was before a scroll.
 - In a wide pane too short to keep the title in place over the main column, the title
   and the sidebar scroll with the column as they do in a narrow pane.
 - The wheel over the box scrolls the ticket, and scrolls the editor while the box has the
   keyboard.
-- `c`, a click in the box or a click on its line gives it the keyboard, and `esc` or a
+- `c`, a click in the box or a click on the top of its border gives it the keyboard, and `esc` or a
   click elsewhere takes it away. While the box has the keyboard every key but `esc`,
   `ctrl+s` and `ctrl+k` is the editor's, `ctrl+c` included, which copies.
-- When the editor cannot open, as under tmux, the line says why and `c` tries again.
+- When the editor cannot open, as under tmux, the border says why and `c` tries again.
 - `ctrl+s` or the `send` button posts the comment as a write. The provider names the
   format it takes (`provider.Commenter`), and the editor converts its Markdown to that
   format when the comment is sent. When the write fails the box and its text stay.
 - A platform can have kinds of comment, such as a public reply and an internal note.
   `comment_kinds` in `[provider]` lists the kinds the box offers, and a new comment
-  starts as the first. The line of the box shows them after its name with the chosen
+  starts as the first. The border of the box shows them after its name with the chosen
   one marked. A click on a kind picks it, and so does `ctrl+k` while the box has the
   keyboard. The choice is kept per ticket until the comment is sent or discarded, or
-  `tq` exits. With one kind listed every comment is that kind and the line shows no
+  `tq` exits. With one kind listed every comment is that kind and the border shows no
   choice. A comment not everyone can read has its kind after its date in the list.
 - Azure DevOps takes the comment as Markdown (`format=markdown`). `@` in the box offers
   the organisation's users from the identity picker, and a mention is sent as

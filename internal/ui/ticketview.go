@@ -173,14 +173,14 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 		return layers
 	}
 
-	// The comment box has its lines among those of the column, left blank
-	// here, and is drawn over the ones in view.
+	// The comment box has its lines among those of the column and scrolls
+	// with them. What can be clicked on its border is drawn over it.
 	if box := tab.placeBox(m, c, len(lines), at); box.on {
-		lines = slices.Concat(lines[:at], make([]string, box.rows+2), lines[at:])
+		lines = slices.Concat(lines[:at], s.composerLines(c.w, box.rows), lines[at:])
 		labels = slices.Clone(labels)
 		for i := range labels {
 			if labels[i].line >= at {
-				labels[i].line += box.rows + 2
+				labels[i].line += box.rows + boxLines
 			}
 		}
 		layers = append(layers, m.composerLayers(tab.t, box)...)

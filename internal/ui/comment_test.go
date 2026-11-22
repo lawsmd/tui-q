@@ -169,7 +169,7 @@ func TestEveryTicketViewHasACommentBox(t *testing.T) {
 		t.Fatalf("idle box at %+v, want %+v", idle, inside(m))
 	}
 	out := screen(m)
-	for _, want := range []string{"Comment", "send", "discard"} {
+	for _, want := range []string{composerName, "send", "discard"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("screen lacks %q\n%s", want, out)
 		}
@@ -211,8 +211,8 @@ func checkBox(t *testing.T, m *Model, b *fakeBox, w, h int, what string) boxPlac
 		t.Fatalf("pane %dx%d %s: drew %d rows", w, h, what, len(lines))
 	}
 	p := m.composerPlace()
-	if p.line.h > 0 && !strings.Contains(lines[p.line.y], " Comment ") {
-		t.Fatalf("pane %dx%d %s: row %d is not the box's line: %q", w, h, what, p.line.y, lines[p.line.y])
+	if p.line.h > 0 && !strings.Contains(lines[p.line.y], "╭─ "+composerName+" ") {
+		t.Fatalf("pane %dx%d %s: row %d is not the border with the box's name: %q", w, h, what, p.line.y, lines[p.line.y])
 	}
 	if p.rect.h == 0 {
 		if !b.covered {
@@ -225,11 +225,22 @@ func checkBox(t *testing.T, m *Model, b *fakeBox, w, h int, what string) boxPlac
 		t.Fatalf("pane %dx%d %s: covered=%v box at %+v, want %+v", w, h, what, b.covered, r, p.rect)
 	}
 	for y := r.y; y < r.y+r.h; y++ {
-		// A row may be drawn without its trailing spaces.
+		// The editor is everything between the two sides of the border.
 		row := []rune(lines[y])
-		got := string(row[min(r.x, len(row)):min(r.x+r.w, len(row))])
-		if strings.TrimSpace(got) != "" {
+		if len(row) <= r.x+r.w || row[r.x-1] != '│' || row[r.x+r.w] != '│' {
+			t.Fatalf("pane %dx%d %s: row %d of the box has no border at its sides: %q", w, h, what, y, lines[y])
+		}
+		if got := string(row[r.x : r.x+r.w]); strings.TrimSpace(got) != "" {
 			t.Fatalf("pane %dx%d %s: row %d of the box holds %q", w, h, what, y, got)
+		}
+	}
+	// The border is the row above the editor and the row below it.
+	if p.line.h > 0 && (r.y != p.line.y+1 || r.x != p.line.x+1 || r.w != p.line.w-2) {
+		t.Fatalf("pane %dx%d %s: editor at %+v is not inside the border at %+v", w, h, what, r, p.line)
+	}
+	if r.h == p.rows && r.y+r.h < h-1 && p.line.h > 0 {
+		if row := []rune(lines[r.y+r.h]); len(row) <= r.x+r.w || row[r.x-1] != '╰' || row[r.x+r.w] != '╯' {
+			t.Fatalf("pane %dx%d %s: row %d is not the border under the box: %q", w, h, what, r.y+r.h, lines[r.y+r.h])
 		}
 	}
 	return p
@@ -279,7 +290,7 @@ func TestCommentBoxIsUnderTheCommentsHeading(t *testing.T) {
 		return -1
 	}
 	// The heading, a blank line, the box's line and its editor.
-	box, comments := row(" Comment "), row("Comments (")
+	box, comments := row(composerName), row("Comments (")
 	if box != b.rect.y-1 || comments != box-2 || box < 4 {
 		t.Fatalf("box line on row %d, editor at %+v, comments heading on row %d", box, b.rect, comments)
 	}
@@ -289,7 +300,7 @@ func TestCommentBoxIsUnderTheCommentsHeading(t *testing.T) {
 	m.tabs[0].main = nil
 	send(t, m, odd{})
 	lines = strings.Split(screen(m), "\n")
-	if box, comments := row(" Comment "), row("Comments ("); box <= comments+2 || box != b.rect.y-1 {
+	if box, comments := row(composerName), row("Comments ("); box <= comments+2 || box != b.rect.y-1 {
 		t.Fatalf("oldest first: box line on row %d, editor at %+v, comments heading on row %d", box, b.rect, comments)
 	}
 	m.prefs.CommentsOldestFirst = false

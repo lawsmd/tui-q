@@ -18,9 +18,10 @@ demo provider. Platform providers, boards with drag and drop, and writes are pla
 
 ## Comments
 
-Every ticket view has a comment box under the heading of the comments, beside the newest,
-drawn on a grey of its own. `c` or a click in the box gives it the keyboard, and it grows
-while it is written in. `ctrl+s` or `send`
+Every ticket view has a comment box under the heading of the comments, beside the newest.
+It is a grey border named "Write a comment" around an editor, and the editor holds the
+text of the comment and nothing else. `c` or a click in the box gives it the keyboard,
+and it grows while it is written in. `ctrl+s` or `send` on the border
 posts the comment, `esc` gives the keyboard back to the ticket, and what was typed is
 kept as a draft until it is sent or discarded.
 
@@ -31,7 +32,7 @@ On a platform with more than one kind of comment, the profile can turn on a choi
 comment_kinds = ["internal", "public"]
 ```
 
-The box then shows the kinds on its line and starts on the first. A click on a kind, or
+The box then shows the kinds on its border, after its name, and starts on the first. A click on a kind, or
 `ctrl+k` while writing, picks the kind the comment is posted as. Jira has `public` and
 `internal`, which a service project shows as a reply to the customer and an internal
 note. Azure DevOps has one kind and takes the comment as Markdown.
