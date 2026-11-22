@@ -35,6 +35,7 @@ card = ["key", "title", "assignee", "priority"]
 main = ["title", "body"]
 sidebar = ["status", "type", "assignee", "priority", "labels", "created", "updated"]
 comments = true
+pictures = true
 
 [fields.labels]
 type = "list"

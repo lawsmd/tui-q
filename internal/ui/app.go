@@ -190,6 +190,13 @@ type Model struct {
 	// one of them to the program for its type.
 	files    *attach.Store
 	openFile func(path string) error
+	// pics are the pictures of the ticket on screen that are drawn in its
+	// view, by attachment ID, and picsOf is that ticket. openPicture makes
+	// a picture ready to draw, and noPictures is why none can be, or empty.
+	pics        map[string]*picture
+	picsOf      string
+	openPicture func(path, background string) (editor.Picture, error)
+	noPictures  string
 	// undo puts the screen back when the running write fails.
 	undo func()
 	// notice is a one-line message for the status bar. The next click
@@ -225,6 +232,10 @@ type Options struct {
 	// the provider cannot add comments, the interface offers no comment
 	// box.
 	OpenEditor func(editor.Config) (editor.Box, error)
+	// OpenPicture makes a picture of a ticket ready to draw in the ticket
+	// view. When it is nil, or the profile does not ask for pictures, a
+	// picture is shown by its name only.
+	OpenPicture func(path, background string) (editor.Picture, error)
 	// WarmEditor, when set, is called once as the first ticket is shown,
 	// to get the editor ready ahead of the first comment.
 	WarmEditor func()
@@ -245,21 +256,22 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 		opts.Files = attach.Open("")
 	}
 	m := &Model{
-		people:     opts.People,
-		prof:       prof,
-		prov:       prov,
-		prefs:      opts.Prefs,
-		actions:    opts.Actions,
-		drafts:     opts.Drafts,
-		files:      opts.Files,
-		openFile:   browser.OpenFile,
-		openEditor: opts.OpenEditor,
-		warm:       opts.WarmEditor,
-		styles:     DefaultStyles(),
-		activeTab:  -1,
-		only:       opts.Ticket,
-		ops:        ops.New(),
-		spin:       spinner.New(spinner.WithSpinner(spinner.MiniDot)),
+		people:      opts.People,
+		prof:        prof,
+		prov:        prov,
+		prefs:       opts.Prefs,
+		actions:     opts.Actions,
+		drafts:      opts.Drafts,
+		files:       opts.Files,
+		openFile:    browser.OpenFile,
+		openEditor:  opts.OpenEditor,
+		openPicture: opts.OpenPicture,
+		warm:        opts.WarmEditor,
+		styles:      DefaultStyles(),
+		activeTab:   -1,
+		only:        opts.Ticket,
+		ops:         ops.New(),
+		spin:        spinner.New(spinner.WithSpinner(spinner.MiniDot)),
 	}
 	m.jump = newJump(m.styles)
 	for i := range prof.Queues {
@@ -485,18 +497,10 @@ func (m *Model) openAttachment(t ticket.Ticket, id string) tea.Cmd {
 		return nil
 	}
 	a, _ := t.Attachment(id)
-	reader := m.prov.(provider.AttachmentReader)
 	return m.start("Opening "+a.Name, false, func(ctx context.Context) (tea.Msg, error) {
-		path, ok := m.files.Path(a)
-		if !ok {
-			body, err := reader.ReadAttachment(ctx, a)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", a.Name, err)
-			}
-			defer body.Close()
-			if path, err = m.files.Save(a, body); err != nil {
-				return nil, err
-			}
+		path, err := m.attachmentFile(ctx, a)
+		if err != nil {
+			return nil, err
 		}
 		if err := m.openFile(path); err != nil {
 			return nil, err
@@ -505,11 +509,11 @@ func (m *Model) openAttachment(t ticket.Ticket, id string) tea.Cmd {
 	})
 }
 
-// Update handles one message, then brings the comment box in line with
-// what the message changed.
+// Update handles one message, then brings the comment box and the pictures
+// in line with what the message changed.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := m.update(msg)
-	return m, tea.Batch(cmd, m.syncComposer())
+	return m, tea.Batch(cmd, m.syncComposer(), m.syncPictures())
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -517,10 +521,13 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
 		m.sizeForm()
-		return m, m.composerPass(msg)
+		return m, tea.Batch(m.composerPass(msg), m.picturePass(msg))
 
 	case composerOpenedMsg:
 		return m, m.composerOpened(msg)
+
+	case pictureOpenedMsg:
+		return m, m.pictureOpened(msg)
 
 	case editor.Changed:
 		return m, m.composerChanged()
@@ -678,8 +685,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		// Anything else is a message one of the form's fields sent itself,
 		// pasted text or a cursor blink for the jump box, or a message of
-		// the comment box, which gets every one of them.
-		cmd := m.composerPass(msg)
+		// the comment box or of a picture, which get every one of them.
+		cmd := tea.Batch(m.composerPass(msg), m.picturePass(msg))
 		if m.form != nil {
 			_, formCmd := m.formUpdate(msg)
 			return m, tea.Batch(formCmd, cmd)

@@ -65,7 +65,8 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   `query` takes its tickets from that query, one page at a time (ten when it names no
   `page_size`), and needs no `values`; this suits a bucket too large to load whole.
   When every bucket of a queue has its own query, the query of the queue is not run.
-- `[ticket]`: main fields and sidebar fields in order; whether comments are shown.
+- `[ticket]`: main fields and sidebar fields in order; whether comments are shown;
+  whether pictures are drawn in the ticket (`pictures`, off unless set).
 - `[fields.<name>]`: platform field ID, type, label. A field with no label is shown
   under the name the platform gives it.
 - `[fields.<name>.icons]`: a map from a value of the field to the name of an icon in
@@ -180,6 +181,21 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   it and opens one for that ticket. A menu or a form shown over it stops it drawing
   until the menu or form closes.
 - The browser behind the editor starts when the first ticket is shown.
+- A picture in the body or a comment is a line with its name, and a click opens the file
+  in the program for its type. With `pictures = true` in `[ticket]` the picture is also
+  drawn under its line. This is an experiment, to find out what it costs to draw and
+  scroll several pictures and whether to keep it.
+- A picture is read when its line first comes into view, through the operation runner as
+  a read. slate scales it to fit the column and 24 rows (`pictureRows`) and draws it as a
+  Sixel image, with no browser. The ticket view holds rows of blank cells for it, in a
+  colour of their own (`Styles.Picture`), and tells the picture where those rows are and
+  which part of the window the column has (`syncPictures`). The picture draws the part of
+  itself in view.
+- An attachment shown twice in a ticket is drawn the first time and named the second.
+  A file that cannot be drawn keeps its line, and the status bar says why. Where the
+  terminal shows no image, no further picture is tried.
+- The pictures belong to the ticket on screen. Showing another ticket or a queue removes
+  them, and a menu or form over the ticket stops them drawing.
 - An instance action runs as a write. When it has questions, a form asks them first and
   cancelling the form cancels the action. The status bar shows the step the action last
   reported. An action may run for five minutes unless it sets its own limit.

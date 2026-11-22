@@ -105,6 +105,9 @@ type TicketView struct {
 	Sidebar []string `toml:"sidebar"`
 	// Comments shows the comment section when true.
 	Comments bool `toml:"comments"`
+	// Pictures draws the pictures of a ticket in its view when true. When
+	// false a picture is a line with its name, which opens it.
+	Pictures bool `toml:"pictures"`
 }
 
 // Field describes a field beyond the built-in ones.

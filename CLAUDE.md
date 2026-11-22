@@ -58,7 +58,7 @@ into this repository.
 | `internal/hit` | mouse messages to gestures on layer IDs |
 | `internal/ops` | operation runner behind the status bar |
 | `internal/prefs` | settings changed from inside the interface, saved per site |
-| `internal/editor` | the comment box: a slate editor behind the `Box` interface |
+| `internal/editor` | the comment box, a slate editor behind the `Box` interface, and a picture drawn in a ticket, behind `Picture` |
 | `internal/drafts` | comments started and not sent, as Markdown, saved per site and ticket |
 | `internal/people` | people mentioned in sent comments, saved per site and offered first after `@` |
 | `internal/attach` | files read from tickets, kept per site in the cache directory |
@@ -107,6 +107,14 @@ into this repository.
   shows one. The ticket view opens pictures only (`Attachment.Image`), and a file is
   stored under an extension taken from its media type, never from its name: opening any
   other file would start whatever program its type belongs to.
+- With `pictures = true` in the profile, the ticket view draws a picture under the line
+  that names it. `mainLines` holds rows of blank cells for it (`Styles.Picture`) and an
+  entry in the labels with `pic` set, and `syncPictures` runs after every message, as
+  `syncComposer` does: it reads a picture whose line has come into view, tells each one
+  where its rows are, and covers them under a menu or form. The rows hold blank cells and
+  never text. `Model.Update` passes the pictures every message it has no use for
+  (`picturePass`). `TestPictureFitsEveryPane` checks the rows across pane sizes and scroll
+  positions.
 - A profile never holds a secret. It names the environment variables that do.
 - `tq order` tells an LLM agent the order to work in. It prints key, status and title for
   each ticket. Do not add other fields, full ticket loads or writes to it: the agent reads

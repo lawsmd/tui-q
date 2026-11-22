@@ -300,10 +300,15 @@ func (m *Model) discardComment() {
 	}
 }
 
-// Close removes the comment box, keeping its text as a draft. The program
-// calls it once the interface has ended: an editor left open would leave
-// its picture on the terminal.
-func (m *Model) Close() { m.closeComposer(true) }
+// Close removes the comment box, keeping its text as a draft, and the
+// pictures of the ticket on screen. The program calls it once the interface
+// has ended: an editor or a picture left open would leave its image on the
+// terminal.
+func (m *Model) Close() {
+	m.closeComposer(true)
+	closeAll(m.openPictures())
+	m.pics, m.picsOf = nil, ""
+}
 
 // sendComment posts the text of the comment box as a comment on its
 // ticket. The box and the draft stay until the platform has taken it.
@@ -438,9 +443,8 @@ func (m *Model) composerPlace() boxPlace {
 	if m.activeTab < 0 || m.activeTab >= len(m.tabs) {
 		return boxPlace{}
 	}
-	tab := m.tabs[m.activeTab]
-	c, lines, _, _, at := tab.mainColumn(m, m.contentArea())
-	return tab.placeBox(m, c, len(lines), at)
+	_, _, _, _, box := m.tabs[m.activeTab].boxedColumn(m, m.contentArea())
+	return box
 }
 
 // syncComposer brings the comment box in line with the screen after a

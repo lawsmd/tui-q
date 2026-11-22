@@ -121,6 +121,7 @@ func Run(opts ...Option) error {
 	// The comment box is an editor drawn by a browser, which is started
 	// when the first ticket is shown and stopped here.
 	uiOpts.OpenEditor, uiOpts.WarmEditor = editor.Open, editor.Warm
+	uiOpts.OpenPicture = editor.OpenPicture
 	defer editor.Shutdown()
 	model := ui.New(prof, prov, uiOpts)
 	_, err = tea.NewProgram(model).Run()

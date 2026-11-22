@@ -81,6 +81,12 @@ type Styles struct {
 	ComposerBorder lipgloss.Style
 	ComposerName   lipgloss.Style
 	ComposerFocus  lipgloss.Style
+	// PictureBack is the colour behind a picture drawn in a ticket, as
+	// "#rrggbb", and Picture the cells the picture is drawn over. The colour
+	// is not the terminal's own, so the cells a picture leaves are drawn
+	// again, which clears it from them.
+	PictureBack string
+	Picture     lipgloss.Style
 	// ComposerKind is a kind of comment the box can post, and
 	// ComposerKindOn the kind it will post.
 	ComposerKind   lipgloss.Style
@@ -183,6 +189,8 @@ func DefaultStyles() Styles {
 		ComposerBorder: lipgloss.NewStyle().Foreground(lipgloss.Color("#8a8d98")),
 		ComposerName:   lipgloss.NewStyle().Foreground(text).Bold(true),
 		ComposerFocus:  lipgloss.NewStyle().Foreground(accent).Bold(true),
+		PictureBack:    composerBack,
+		Picture:        lipgloss.NewStyle().Background(lipgloss.Color(composerBack)),
 		ComposerKind:   lipgloss.NewStyle().Background(lipgloss.Color(composerBack)).Foreground(dim),
 		ComposerKindOn: lipgloss.NewStyle().Background(accent).Foreground(onLight).Bold(true),
 		CommentAuthor:  lipgloss.NewStyle().Foreground(text).Bold(true),

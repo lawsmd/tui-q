@@ -67,12 +67,19 @@ type ticketTab struct {
 // starts. One with a file is the line of an attachment that can be opened,
 // and file is the attachment's ID. One with neither a name nor a file is
 // the control for the order of the comments.
+//
+// One with pic set is no label: it is the rows of blank cells a picture is
+// drawn over, w by h cells from the line down. room is the columns the
+// picture was given to fit in.
 type labelLine struct {
 	name string
 	file string
 	line int
 	x    int
 	text string
+
+	pic        bool
+	w, h, room int
 }
 
 // set replaces the ticket and drops the rendered cache.
@@ -148,11 +155,21 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 		layers = append(layers, lipgloss.NewLayer(text).X(c.x).Y(c.y).Z(zScenery))
 		for _, l := range labels {
 			row := l.line - offset
-			if row < 0 || row >= c.h {
+			if !l.pic && (row < 0 || row >= c.h) {
 				continue
 			}
 			id := idCommentOrder
 			switch {
+			case l.pic:
+				// The rows of a picture open it, as its line does. Only the
+				// rows in view have a layer.
+				top, bottom := max(row, 0), min(row+l.h, c.h)
+				if bottom > top {
+					cells := strings.TrimSuffix(strings.Repeat(s.Picture.Render(strings.Repeat(" ", l.w))+"\n", bottom-top), "\n")
+					layers = append(layers, lipgloss.NewLayer(cells).ID(layerID(idFile, len(tab.files))).X(c.x+l.x).Y(c.y+top).Z(zItem))
+					tab.files = append(tab.files, l.file)
+				}
+				continue
 			case l.file != "":
 				id = layerID(idFile, len(tab.files))
 				tab.files = append(tab.files, l.file)
@@ -165,24 +182,15 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 		return offset
 	}
 
-	c, lines, labels, head, at := tab.mainColumn(m, a)
+	c, lines, labels, head, box := tab.boxedColumn(m, a)
 	if len(head) > 0 {
 		layers = append(layers, lipgloss.NewLayer(strings.Join(head, "\n")).X(body.x).Y(body.y).Z(zScenery))
 	}
 	if c.h <= 0 {
 		return layers
 	}
-
-	// The comment box has its lines among those of the column and scrolls
-	// with them. What can be clicked on its border is drawn over it.
-	if box := tab.placeBox(m, c, len(lines), at); box.on {
-		lines = slices.Concat(lines[:at], s.composerLines(c.w, box.rows), lines[at:])
-		labels = slices.Clone(labels)
-		for i := range labels {
-			if labels[i].line >= at {
-				labels[i].line += box.rows + boxLines
-			}
-		}
+	// What can be clicked on the border of the comment box is drawn over it.
+	if box.on {
 		layers = append(layers, m.composerLayers(tab.t, box)...)
 	}
 	tab.offset = column(c, lines, labels, tab.offset)
@@ -198,6 +206,26 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 	right, rightLabels := tab.sidebarLines(m, sidebarWidth)
 	tab.sideOffset = column(area{tab.sideX, c.y, sidebarWidth, c.h}, right, rightLabels, tab.sideOffset)
 	return layers
+}
+
+// boxedColumn is mainColumn with the comment box in it. The box has its
+// lines among those of the column and scrolls with them, and the labels
+// after it are moved down by its lines.
+func (tab *ticketTab) boxedColumn(m *Model, a area) (c area, lines []string, labels []labelLine, head []string, box boxPlace) {
+	c, lines, labels, head, at := tab.mainColumn(m, a)
+	if c.h <= 0 {
+		return c, lines, labels, head, box
+	}
+	if box = tab.placeBox(m, c, len(lines), at); box.on {
+		lines = slices.Concat(lines[:at], m.styles.composerLines(c.w, box.rows), lines[at:])
+		labels = slices.Clone(labels)
+		for i := range labels {
+			if labels[i].line >= at {
+				labels[i].line += box.rows + boxLines
+			}
+		}
+	}
+	return c, lines, labels, head, box
 }
 
 // mainColumn is the scrolling column that holds the main fields of the
@@ -294,12 +322,36 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 	// pictures in it that can be opened as labels. at is the line of the
 	// column the first line of the text goes on, and x how far along the
 	// column the text starts.
+	//
+	// A picture that is ready to draw gets rows of blank cells under the
+	// line that names it, the first time the text shows it, and an entry
+	// in the labels that says where they are.
+	drawn := map[string]bool{}
 	markdown := func(text string, width, at, x int) []string {
 		out, files := s.markdownFiles(text, width)
+		added := 0
 		for _, f := range files {
-			if m.canOpen(tab.t, f.id) && f.text != "" {
-				labels = append(labels, labelLine{file: f.id, line: at + f.line, x: x + f.x, text: s.Label.Render(f.text)})
+			if !m.canOpen(tab.t, f.id) || f.text == "" {
+				continue
 			}
+			line := f.line + added
+			labels = append(labels, labelLine{file: f.id, line: at + line, x: x + f.x, text: s.Label.Render(f.text)})
+			pic := m.pictureOf(tab.t.ID, f.id)
+			if pic == nil || drawn[f.id] {
+				continue
+			}
+			// The margin is left free on the right as well, which keeps
+			// the rows inside a comment whichever way its margin is cut.
+			room := width - f.x - markdownMargin
+			pw, ph := pic.Fit(room, pictureRows)
+			if pw < 1 || ph < 1 {
+				continue
+			}
+			drawn[f.id] = true
+			row := strings.Repeat(" ", f.x) + s.Picture.Render(strings.Repeat(" ", pw))
+			out = slices.Insert(out, line+1, slices.Repeat([]string{row}, ph)...)
+			labels = append(labels, labelLine{file: f.id, pic: true, line: at + line + 1, x: x + f.x, w: pw, h: ph, room: room})
+			added += ph
 		}
 		return out
 	}
@@ -385,6 +437,10 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 			// unindent keeps the margin when some line has text in it, so
 			// each label is put where its text ended up.
 			for i := first; i < len(labels); i++ {
+				if labels[i].pic {
+					labels[i].x = labels[i-1].x // under the line that names it
+					continue
+				}
 				line := ansi.Strip(text[labels[i].line-len(lines)-1])
 				if at := strings.Index(line, ansi.Strip(labels[i].text)); at >= 0 {
 					labels[i].x = 2 + ansi.StringWidth(line[:at])

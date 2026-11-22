@@ -72,6 +72,28 @@ redraw_on_focus_gained = false
 The rest of `tq` runs in any terminal that reports mouse events. slate's README says how
 to add another multiplexer.
 
+## Pictures
+
+A picture that a ticket shows in its body or in a comment is a line with the name of the
+file, `[image: name.png]`. A click on the line reads the file once, keeps it in the cache
+directory, and opens it in the program the machine opens pictures with.
+
+The profile can ask for the pictures to be drawn in the ticket as well. This is an
+experiment:
+
+```toml
+[ticket]
+pictures = true
+```
+
+A picture is then read when its line first comes into view and drawn under the line, no
+wider than the column and at most 24 rows high. A larger picture is scaled down, and a
+click on it opens the file at full size. The picture scrolls with the ticket. PNG, JPEG
+and GIF files are drawn; any other picture keeps its line only.
+
+slate draws a picture as it draws the comment box, as a Sixel image, so pictures are
+drawn in the terminals where the box works. Elsewhere they keep their lines.
+
 ## Try it
 
 ```
