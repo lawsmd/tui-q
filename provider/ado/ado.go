@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,9 +27,6 @@ const batchSize = 200
 
 // readers is how many batch reads run at once.
 const readers = 4
-
-// ErrReadOnly is returned by every write but AddComment.
-var ErrReadOnly = errors.New("ado: this provider is read-only")
 
 // The provider adds comments.
 var _ provider.Commenter = (*Provider)(nil)
@@ -61,6 +57,7 @@ type Provider struct {
 	project string
 	// fields maps a profile field name to a field reference name.
 	fields map[string]string
+	meta   meta
 }
 
 // New builds a Provider from a profile's [provider] section. base_url is
@@ -281,6 +278,11 @@ func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 		return md
 	}
 	t.Body = text(decode(w.Fields[fieldBody]).Text)
+	// The ticket is shown without the fields that can be edited when Azure
+	// DevOps does not describe them.
+	if specs, err := p.editable(ctx, decode(w.Fields[fieldType]).Text); err == nil {
+		t.Editable = specs
+	}
 
 	var comments struct {
 		Comments []struct {
@@ -321,24 +323,6 @@ func (p *Provider) ReadAttachment(ctx context.Context, a ticket.Attachment) (io.
 		return nil, err
 	}
 	return resp.Body, nil
-}
-
-// Transitions lists no moves: the provider changes no state.
-func (p *Provider) Transitions(context.Context, string) ([]ticket.Transition, error) {
-	return nil, nil
-}
-
-// Transition is not supported.
-func (p *Provider) Transition(context.Context, string, ticket.Transition, map[string]ticket.Value) error {
-	return ErrReadOnly
-}
-
-// Assign is not supported.
-func (p *Provider) Assign(context.Context, string, string) error { return ErrReadOnly }
-
-// UpdateField is not supported.
-func (p *Provider) UpdateField(context.Context, string, string, ticket.Value) error {
-	return ErrReadOnly
 }
 
 // Me is the signed-in user. Its ID is the account's sign-in name, which is

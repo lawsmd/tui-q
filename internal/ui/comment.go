@@ -477,7 +477,7 @@ func (m *Model) syncComposer() tea.Cmd {
 		c.rect = rect
 		cmds = append(cmds, c.box.SetRect(rect.x, rect.y, rect.w, rect.h))
 	}
-	if covered := !ok || m.menu != nil || m.form != nil; covered != c.covered {
+	if covered := !ok || m.menu != nil || m.form != nil || m.picker != nil; covered != c.covered {
 		c.covered = covered
 		cmds = append(cmds, c.box.Cover(covered))
 	}
@@ -488,7 +488,7 @@ func (m *Model) syncComposer() tea.Cmd {
 // reports false for a key that is not the box's to take.
 func (m *Model) composerKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	c := m.composer
-	if c == nil || !c.writing || m.menu != nil || m.ops.Locked() {
+	if c == nil || !c.writing || m.menu != nil || m.picker != nil || m.ops.Locked() {
 		return nil, false
 	}
 	switch msg.String() {

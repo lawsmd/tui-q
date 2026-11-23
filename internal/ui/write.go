@@ -362,6 +362,9 @@ func (m *Model) editField(tab *ticketTab, name string, x, y int) tea.Cmd {
 	}
 	spec.Label = m.label(name)
 	current := t.Field(name)
+	if spec.Kind == ticket.KindTags {
+		return m.openPicker(tab, name)
+	}
 	if spec.Kind == ticket.KindSelect {
 		var items []menuItem
 		for _, o := range spec.Options {

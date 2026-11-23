@@ -112,6 +112,17 @@ type Mentioner interface {
 	Mentionable(ctx context.Context, id, query string) ([]ticket.User, error)
 }
 
+// Suggester is a Provider that can search the values a field takes, for a
+// field with more values than a menu can list, such as the tags of a
+// project. The interface offers the search for a field of kind
+// ticket.KindTags only for a provider that implements it.
+type Suggester interface {
+	// Suggest returns the values of field that match query, the best
+	// matches first. field is the profile's name for the field or a
+	// built-in name. A field with no such search returns none.
+	Suggest(ctx context.Context, id, field, query string) ([]string, error)
+}
+
 // AttachmentReader is a Provider that can read the files on a ticket. The
 // interface opens an attachment only for a provider that implements it.
 type AttachmentReader interface {

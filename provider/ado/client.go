@@ -139,6 +139,23 @@ func (e *Error) Error() string {
 // A non-nil body is sent as JSON. A non-nil out receives the decoded JSON
 // response.
 func (c *Client) Do(ctx context.Context, method, path string, body, out any) error {
+	return c.send(ctx, method, path, "application/json", body, out)
+}
+
+// Patch sends a JSON Patch document, the form Azure DevOps takes a change
+// to a work item in. out, when not nil, receives the decoded response.
+func (c *Client) Patch(ctx context.Context, path string, ops []PatchOp, out any) error {
+	return c.send(ctx, http.MethodPatch, path, "application/json-patch+json", ops, out)
+}
+
+// PatchOp is one operation of a JSON Patch document.
+type PatchOp struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value any    `json:"value"`
+}
+
+func (c *Client) send(ctx context.Context, method, path, contentType string, body, out any) error {
 	if !strings.Contains(path, "api-version=") {
 		sep := "?"
 		if strings.Contains(path, "?") {
@@ -163,7 +180,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 	}
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 	}
 
 	resp, err := c.http.Do(req)

@@ -44,6 +44,10 @@ type fakeServer struct {
 	auth    string
 	// posted holds the query and text of each comment added.
 	posted []postedComment
+	// patched holds the operations of each change to a work item, and
+	// patchType the content type of the last.
+	patched   [][]PatchOp
+	patchType string
 }
 
 type postedComment struct {
@@ -121,14 +125,47 @@ func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		io.WriteString(w, `{"results": [{"identities": [
-		  {"entityType": "User", "localId": "0000-42", "displayName": "Sam Example"},
-		  {"entityType": "User", "localId": null, "displayName": "Sam Elsewhere"}]}]}`)
+		  {"entityType": "User", "localId": "0000-42", "displayName": "Sam Example", "signInAddress": "sam@example.com"},
+		  {"entityType": "User", "localId": null, "displayName": "Sam Elsewhere", "signInAddress": "sam@elsewhere.example.com"},
+		  {"entityType": "User", "localId": "0000-43", "displayName": "Sam Nowhere"}]}]}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/_apis/connectionData":
 		io.WriteString(w, `{"authenticatedUser": {"providerDisplayName": "Sam Example",
 		  "properties": {"Account": {"$type": "System.String", "$value": "sam@example.com"}}}}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/DEMO/_apis/wit/fields":
-		io.WriteString(w, `{"value": [{"name": "Tags", "referenceName": "System.Tags"},
-		  {"name": "Field 42", "referenceName": "Custom.Field42"}]}`)
+		io.WriteString(w, `{"value": [
+		  {"name": "Tags", "referenceName": "System.Tags", "type": "plainText"},
+		  {"name": "Field 42", "referenceName": "Custom.Field42", "type": "double"},
+		  {"name": "Priority", "referenceName": "Microsoft.VSTS.Common.Priority", "type": "integer"},
+		  {"name": "Title", "referenceName": "System.Title", "type": "string"},
+		  {"name": "State", "referenceName": "System.State", "type": "string"},
+		  {"name": "Assigned To", "referenceName": "System.AssignedTo", "type": "string", "isIdentity": true},
+		  {"name": "Created By", "referenceName": "System.CreatedBy", "type": "string", "isIdentity": true, "readOnly": true},
+		  {"name": "Severity", "referenceName": "Microsoft.VSTS.Common.Severity", "type": "string"}]}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/DEMO/_apis/wit/workitemtypes/Bug/fields":
+		if r.URL.Query().Get("$expand") != "allowedValues" {
+			http.Error(w, "no allowed values asked for", http.StatusBadRequest)
+			return
+		}
+		io.WriteString(w, `{"value": [
+		  {"referenceName": "System.Title", "alwaysRequired": true},
+		  {"referenceName": "System.State", "alwaysRequired": true, "allowedValues": ["New", "Done"]},
+		  {"referenceName": "System.AssignedTo"},
+		  {"referenceName": "System.CreatedBy"},
+		  {"referenceName": "System.Tags"},
+		  {"referenceName": "Custom.Field42"},
+		  {"referenceName": "Microsoft.VSTS.Common.Priority", "allowedValues": ["1", "2", "3"]},
+		  {"referenceName": "Microsoft.VSTS.Common.Severity", "allowedValues": ["1 - Critical"]}]}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/DEMO/_apis/wit/workitemtypes/Bug/states":
+		io.WriteString(w, `{"count": 3, "value": [{"name": "New"}, {"name": "Active"}, {"name": "Done"}]}`)
+	case r.Method == http.MethodPatch && r.URL.Path == "/DEMO/_apis/wit/workitems/7":
+		var ops []PatchOp
+		json.NewDecoder(r.Body).Decode(&ops)
+		f.patched = append(f.patched, ops)
+		f.patchType = r.Header.Get("Content-Type")
+		io.WriteString(w, item(7, "Export drops rows", ""))
+	case r.Method == http.MethodGet && r.URL.Path == "/DEMO/_apis/wit/tags":
+		io.WriteString(w, `{"count": 5, "value": [{"name": "export"}, {"name": "csv"},
+		  {"name": "re-export"}, {"name": "Exporter"}, {"name": "billing"}]}`)
 	default:
 		http.Error(w, `{"message": "not found"}`, http.StatusNotFound)
 	}
@@ -258,12 +295,8 @@ func TestErrorsAndWrites(t *testing.T) {
 	if !errors.As(err, &apiErr) || apiErr.Status != 400 || !strings.Contains(apiErr.Error(), "TF51005") {
 		t.Errorf("error %v", err)
 	}
-	if err := p.Assign(context.Background(), "7", "x"); !errors.Is(err, ErrReadOnly) {
-		t.Errorf("assign: %v", err)
-	}
-	trs, err := p.Transitions(context.Background(), "7")
-	if err != nil || len(trs) != 0 {
-		t.Errorf("transitions %v %v", trs, err)
+	if err := p.Assign(context.Background(), "DEMO-7", "x"); err == nil {
+		t.Error("assign took a key that is no number")
 	}
 }
 
@@ -355,17 +388,141 @@ func TestMentions(t *testing.T) {
 	}
 }
 
-func TestUsers(t *testing.T) {
+func TestUsersAndMentionable(t *testing.T) {
 	p := newTest(t, &fakeServer{})
-	users, err := p.Users(context.Background(), "7", "sam")
+	// A mention names the identity ID.
+	users, err := p.Mentionable(context.Background(), "7", "sam")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(users) != 1 || users[0].ID != "0000-42" || users[0].Name != "Sam Example" {
+	if len(users) != 2 || users[0].ID != "0000-42" || users[0].Name != "Sam Example" || users[1].ID != "0000-43" {
+		t.Errorf("mentionable %+v", users)
+	}
+	// The assignee takes the sign-in name.
+	users, err = p.Users(context.Background(), "7", "sam")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 2 || users[0].ID != "sam@example.com" || users[1].ID != "sam@elsewhere.example.com" {
 		t.Errorf("users %+v", users)
 	}
 	if users, err := p.Users(context.Background(), "7", " "); err != nil || users != nil {
 		t.Errorf("empty query: %v %v", users, err)
+	}
+}
+
+func TestGetDescribesEditableFields(t *testing.T) {
+	p := newTest(t, &fakeServer{})
+	got, err := p.Get(context.Background(), "7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, spec := range got.Editable {
+		names = append(names, spec.Name+":"+spec.Kind)
+	}
+	// Read-only fields, the state, and fields the profile does not name
+	// are left out.
+	want := "assignee:user,effort:number,priority:select,tags:tags,title:text"
+	if strings.Join(names, ",") != want {
+		t.Errorf("editable %s, want %s", strings.Join(names, ","), want)
+	}
+	if spec, _ := got.Spec("priority"); len(spec.Options) != 3 || spec.Options[2].Name != "3" {
+		t.Errorf("priority options %+v", spec.Options)
+	}
+	if spec, _ := got.Spec("title"); !spec.Required {
+		t.Error("title is not required")
+	}
+}
+
+func TestTransitions(t *testing.T) {
+	f := &fakeServer{}
+	p := newTest(t, f)
+	trs, err := p.Transitions(context.Background(), "7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trs) != 2 || trs[0].To != "Active" || trs[1].To != "Done" {
+		t.Fatalf("transitions %+v", trs)
+	}
+	if err := p.Transition(context.Background(), "7", trs[1], map[string]ticket.Value{"effort": ticket.Text("3")}); err != nil {
+		t.Fatal(err)
+	}
+	if f.patchType != "application/json-patch+json" {
+		t.Errorf("content type %q", f.patchType)
+	}
+	want := []PatchOp{
+		{Op: "add", Path: "/fields/System.State", Value: "Done"},
+		{Op: "add", Path: "/fields/Custom.Field42", Value: 3.0},
+	}
+	if got := f.patched[0]; len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("patch %+v", got)
+	}
+}
+
+func TestWrites(t *testing.T) {
+	f := &fakeServer{}
+	p := newTest(t, f)
+	ctx := context.Background()
+	for _, c := range []struct {
+		field string
+		v     ticket.Value
+		want  PatchOp
+	}{
+		{ticket.FieldAssignee, ticket.Value{Text: "Sam Example", ID: "sam@example.com"},
+			PatchOp{Op: "add", Path: "/fields/System.AssignedTo", Value: "sam@example.com"}},
+		{ticket.FieldAssignee, ticket.Value{},
+			PatchOp{Op: "add", Path: "/fields/System.AssignedTo", Value: ""}},
+		{"priority", ticket.Text("2"),
+			PatchOp{Op: "add", Path: "/fields/Microsoft.VSTS.Common.Priority", Value: "2"}},
+		{"effort", ticket.Text(""),
+			PatchOp{Op: "remove", Path: "/fields/Custom.Field42"}},
+		{"tags", ticket.List("export", "csv", "Export", " new tag "),
+			PatchOp{Op: "add", Path: "/fields/System.Tags", Value: "export; csv; new tag"}},
+		{"tags", ticket.List(),
+			PatchOp{Op: "add", Path: "/fields/System.Tags", Value: ""}},
+		{ticket.FieldTitle, ticket.Text("Rows vanish"),
+			PatchOp{Op: "add", Path: "/fields/System.Title", Value: "Rows vanish"}},
+	} {
+		f.patched = nil
+		if err := p.UpdateField(ctx, "7", c.field, c.v); err != nil {
+			t.Errorf("%s: %v", c.field, err)
+			continue
+		}
+		if len(f.patched) != 1 || len(f.patched[0]) != 1 || f.patched[0][0] != c.want {
+			t.Errorf("%s: patch %+v, want %+v", c.field, f.patched, c.want)
+		}
+	}
+	for _, c := range []struct {
+		field string
+		v     ticket.Value
+	}{
+		{"priority", ticket.Text("9")},
+		{"effort", ticket.Text("lots")},
+		{"tags", ticket.List("a;b")},
+		{"severity", ticket.Text("1 - Critical")},
+	} {
+		f.patched = nil
+		if err := p.UpdateField(ctx, "7", c.field, c.v); err == nil || len(f.patched) != 0 {
+			t.Errorf("%s %+v was written", c.field, c.v)
+		}
+	}
+}
+
+func TestSuggestTags(t *testing.T) {
+	p := newTest(t, &fakeServer{})
+	got, err := p.Suggest(context.Background(), "7", "tags", "EXPORT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "export,Exporter,re-export" {
+		t.Errorf("suggested %v", got)
+	}
+	if got, err := p.Suggest(context.Background(), "7", "effort", "x"); err != nil || got != nil {
+		t.Errorf("a field with no search: %v %v", got, err)
+	}
+	if got := matchTags([]string{"b", "a", "c"}, "", 2); strings.Join(got, ",") != "a,b" {
+		t.Errorf("limit: %v", got)
 	}
 }
 

@@ -101,41 +101,24 @@ func rewriteMentions(s string) string {
 	})
 }
 
-// Users finds the people of the organisation whose name or sign-in address
-// matches query, for the mentions of the comment box. A user's ID is the
-// identity ID a mention names, not the sign-in name that Me returns.
-// People of the directory who have never been added to the organisation
-// have no identity ID and are left out.
-func (p *Provider) Users(ctx context.Context, _ string, query string) ([]ticket.User, error) {
+// Mentionable finds the people of the organisation whose name or sign-in
+// address matches query, for the mentions of the comment box. A user's ID
+// is the identity ID a mention names, not the sign-in name that Users
+// returns. People of the directory who have never been added to the
+// organisation have no identity ID and are left out.
+func (p *Provider) Mentionable(ctx context.Context, _ string, query string) ([]ticket.User, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, nil
 	}
-	req := map[string]any{
-		"query":           query,
-		"identityTypes":   []string{"user"},
-		"operationScopes": []string{"ims", "source"},
-		"properties":      []string{"DisplayName", "SignInAddress"},
-		"options":         map[string]int{"MinResults": 5, "MaxResults": 20},
-	}
-	var resp struct {
-		Results []struct {
-			Identities []struct {
-				LocalID     string `json:"localId"`
-				DisplayName string `json:"displayName"`
-			} `json:"identities"`
-		} `json:"results"`
-	}
-	path := "/_apis/IdentityPicker/Identities?api-version=" + apiVersion + "-preview.1"
-	if err := p.client.Do(ctx, http.MethodPost, path, req, &resp); err != nil {
+	found, err := p.identities(ctx, query)
+	if err != nil {
 		return nil, err
 	}
 	var out []ticket.User
-	for _, r := range resp.Results {
-		for _, id := range r.Identities {
-			if id.LocalID != "" {
-				out = append(out, ticket.User{ID: id.LocalID, Name: id.DisplayName})
-			}
+	for _, id := range found {
+		if id.LocalID != "" {
+			out = append(out, ticket.User{ID: id.LocalID, Name: id.DisplayName})
 		}
 	}
 	return out, nil

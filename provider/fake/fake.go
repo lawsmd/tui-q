@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -385,6 +386,30 @@ func (p *Provider) Users(ctx context.Context, _, query string) ([]ticket.User, e
 			out = append(out, ticket.User{ID: name, Name: name})
 		}
 	}
+	return out, nil
+}
+
+// Suggest searches the labels the fixtures use, for the "labels" field:
+// each label that contains query once, in alphabetical order.
+func (p *Provider) Suggest(ctx context.Context, _, field, query string) ([]string, error) {
+	if err := p.wait(ctx); err != nil {
+		return nil, err
+	}
+	if field != "labels" {
+		return nil, nil
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []string
+	for _, t := range p.tickets {
+		for _, label := range t.Fields["labels"].Items {
+			if strings.Contains(strings.ToLower(label), q) && !slices.Contains(out, label) {
+				out = append(out, label)
+			}
+		}
+	}
+	slices.Sort(out)
 	return out, nil
 }
 

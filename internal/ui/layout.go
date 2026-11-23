@@ -61,6 +61,9 @@ func (m *Model) compose() *lipgloss.Compositor {
 	if m.menu != nil {
 		root.AddLayers(m.menuLayers()...)
 	}
+	if m.picker != nil {
+		root.AddLayers(m.pickerLayers()...)
+	}
 	if m.form != nil {
 		root.AddLayers(m.formLayers()...)
 	}

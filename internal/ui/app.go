@@ -60,6 +60,13 @@ const (
 	idField      = "field"
 	idForm       = "form"
 	idFormCancel = "formcancel"
+	// idPicker is the tag box; the others are a tag in it, a search
+	// result, and its buttons.
+	idPicker     = "picker"
+	idPickTag    = "picktag"
+	idPickItem   = "pickitem"
+	idPickSave   = "picksave"
+	idPickCancel = "pickcancel"
 	idGear       = "gear"
 	idAction     = "action"
 	idJump       = "jump"
@@ -160,7 +167,9 @@ type Model struct {
 	// carried. All are nil most of the time.
 	menu *menu
 	form *form
-	drag *drag
+	// picker is the open tag box, or nil.
+	picker *picker
+	drag   *drag
 	// resize is the column edge being dragged, or nil.
 	resize *resize
 	// tabDrag is the ticket tab being dragged, or nil, and tabSpans where
@@ -620,6 +629,12 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case usersMsg:
 		m.userMenu(msg)
 
+	case pickSearchMsg:
+		return m, m.pickSearch(msg)
+
+	case pickFoundMsg:
+		m.pickFound(msg)
+
 	case needFieldsMsg:
 		return m, m.askFields(msg.t, msg.tr)
 
@@ -650,6 +665,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.formUpdate(msg)
 		}
+		if m.picker != nil {
+			return m, m.pickKey(msg)
+		}
 		if m.jumping {
 			return m, m.jumpKey(msg)
 		}
@@ -678,6 +696,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				continue
 			}
+			if m.picker != nil {
+				cmds = append(cmds, m.pickGesture(ev))
+				continue
+			}
 			cmds = append(cmds, m.gesture(ev))
 		}
 		return m, tea.Batch(cmds...)
@@ -690,6 +712,11 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.form != nil {
 			_, formCmd := m.formUpdate(msg)
 			return m, tea.Batch(formCmd, cmd)
+		}
+		if m.picker != nil {
+			var pickCmd tea.Cmd
+			m.picker.in, pickCmd = m.picker.in.Update(msg)
+			return m, tea.Batch(pickCmd, cmd)
 		}
 		if m.jumping {
 			var jumpCmd tea.Cmd

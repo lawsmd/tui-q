@@ -57,6 +57,9 @@ type ticketTab struct {
 	// fields are the names of the fields that can be clicked in the last
 	// frame drawn. A field layer's index points into it.
 	fields []string
+	// fieldAt is where the label of each field that can be clicked was
+	// drawn in the last frame, with the width of the column it is in.
+	fieldAt map[string]area
 	// files are the IDs of the attachments that can be clicked in the last
 	// frame drawn. A file layer's index points into it.
 	files []string
@@ -137,6 +140,7 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 
 	body := ticketBody(a)
 	tab.fields, tab.files = nil, nil
+	tab.fieldAt = map[string]area{}
 	tab.sideX = 0
 	if body.h <= 0 || body.w <= 0 {
 		return layers
@@ -176,6 +180,7 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 			case l.name != "":
 				id = layerID(idField, len(tab.fields))
 				tab.fields = append(tab.fields, l.name)
+				tab.fieldAt[l.name] = area{x: c.x + l.x, y: c.y + row, w: c.w - l.x, h: 1}
 			}
 			layers = append(layers, lipgloss.NewLayer(l.text).ID(id).X(c.x+l.x).Y(c.y+row).Z(zItem))
 		}

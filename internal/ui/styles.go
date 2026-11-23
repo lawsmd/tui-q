@@ -59,6 +59,11 @@ type Styles struct {
 	MenuBorder lipgloss.Style
 	MenuTitle  lipgloss.Style
 	MenuItem   lipgloss.Style
+	// PickTag is a tag in the tag box, PickCursor the result under the
+	// cursor, and PickHint the faint lines of the box.
+	PickTag    lipgloss.Style
+	PickCursor lipgloss.Style
+	PickHint   lipgloss.Style
 
 	Title lipgloss.Style
 	Label lipgloss.Style
@@ -176,6 +181,9 @@ func DefaultStyles() Styles {
 		MenuBorder: lipgloss.NewStyle().Foreground(accent).Background(bar),
 		MenuTitle:  lipgloss.NewStyle().Foreground(accent).Background(bar).Bold(true),
 		MenuItem:   lipgloss.NewStyle().Foreground(text).Background(bar),
+		PickTag:    lipgloss.NewStyle().Foreground(bright).Background(chip).Padding(0, 1),
+		PickCursor: lipgloss.NewStyle().Foreground(onLight).Background(accent),
+		PickHint:   lipgloss.NewStyle().Foreground(dim).Background(bar),
 
 		Title: lipgloss.NewStyle().Foreground(text).Bold(true),
 		Label: lipgloss.NewStyle().Foreground(accent),

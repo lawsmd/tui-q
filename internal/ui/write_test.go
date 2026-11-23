@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/provider/fake"
@@ -229,11 +230,14 @@ func TestTicketViewEditsFields(t *testing.T) {
 		t.Fatalf("priority = %q", got)
 	}
 
+	// The tag box adds each of a list typed with commas, and saves on
+	// enter with nothing typed.
 	clickField(t, m, "labels")
-	if m.form == nil {
-		t.Fatal("no form for a list of tags")
+	if m.picker == nil {
+		t.Fatal("no tag box for a list of tags")
 	}
-	typeText(t, m, ", billing")
+	typeText(t, m, "billing,")
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if got := stored(t, m, key).Field("labels").String(); got != "auth, billing" {
 		t.Fatalf("labels = %q", got)
@@ -242,12 +246,88 @@ func TestTicketViewEditsFields(t *testing.T) {
 		t.Fatalf("tab does not show the new labels\n%s", screen(m))
 	}
 
-	// Esc closes a form without writing.
+	// Esc closes the box without writing.
 	clickField(t, m, "labels")
-	typeText(t, m, ", gone")
+	typeText(t, m, "gone,")
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	send(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if m.form != nil || stored(t, m, key).Field("labels").String() != "auth, billing" {
+	if m.picker != nil || stored(t, m, key).Field("labels").String() != "auth, billing" {
 		t.Fatal("esc did not abandon the edit")
+	}
+}
+
+func TestTagsAreFoundBySearch(t *testing.T) {
+	m := newModel(t, 120, 40)
+	clickLayer(t, m, layerID(idRow, 0))
+	key := m.tabs[0].t.Key
+	if got := m.tabs[0].t.Field("labels").String(); got != "auth" {
+		t.Fatalf("fixture labels = %q", got)
+	}
+
+	// A search lists the matching tags the ticket lacks, and offers the
+	// words searched for as a new tag when no tag is spelt that way.
+	clickField(t, m, "labels")
+	typeText(t, m, "o")
+	if got := strings.Join(m.picker.choices(), ","); got != "export,import,integrations,mobile,reports,timezone,webhooks,New tag \"o\"" {
+		t.Fatalf("choices %s", got)
+	}
+	// Down and enter add the second result; a click adds another.
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	typeText(t, m, "mob")
+	clickLayer(t, m, layerID(idPickItem, 0))
+	typeText(t, m, "Brand new")
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got := strings.Join(m.picker.items, ", "); got != "auth, import, mobile, Brand new" {
+		t.Fatalf("box holds %q", got)
+	}
+	// A click on a tag takes it off; backspace on an empty line takes off
+	// the last. Nothing is written until the save.
+	clickLayer(t, m, layerID(idPickTag, 0))
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if got := stored(t, m, key).Field("labels").String(); got != "auth" {
+		t.Fatalf("labels written before the save: %q", got)
+	}
+	clickLayer(t, m, idPickSave)
+	if m.picker != nil {
+		t.Fatal("save left the box open")
+	}
+	if got := stored(t, m, key).Field("labels").String(); got != "import, mobile" {
+		t.Fatalf("labels = %q", got)
+	}
+}
+
+// The tag box opens under the label of its field and inside the sidebar.
+func TestTagBoxOpensUnderItsField(t *testing.T) {
+	m := newModel(t, 120, 40)
+	clickLayer(t, m, layerID(idRow, 0))
+	clickField(t, m, "labels")
+	m.View()
+	tab := m.tabs[0]
+	at := tab.fieldAt["labels"]
+	box := m.comp.GetLayer(idPicker)
+	if box.GetY() != at.y+1 {
+		t.Errorf("box at row %d, label at row %d", box.GetY(), at.y)
+	}
+	if left, right := box.GetX(), box.GetX()+lipgloss.Width(box.GetContent()); left < tab.sideX-2 || right > m.w {
+		t.Errorf("box spans columns %d-%d, sidebar starts at %d", left, right, tab.sideX)
+	}
+
+	// A click outside the box closes it while nothing has changed, and
+	// does nothing once a tag has been added.
+	typeText(t, m, "x,")
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	send(t, m, tea.MouseClickMsg{X: 1, Y: 10, Button: tea.MouseLeft})
+	send(t, m, tea.MouseReleaseMsg{X: 1, Y: 10, Button: tea.MouseLeft})
+	if m.picker == nil {
+		t.Fatal("a click outside dropped the edit")
+	}
+	clickLayer(t, m, idPickCancel)
+	clickField(t, m, "labels")
+	send(t, m, tea.MouseClickMsg{X: 1, Y: 10, Button: tea.MouseLeft})
+	send(t, m, tea.MouseReleaseMsg{X: 1, Y: 10, Button: tea.MouseLeft})
+	if m.picker != nil {
+		t.Fatal("a click outside left an unchanged box open")
 	}
 }
 
@@ -297,9 +377,14 @@ func TestLongMenuScrolls(t *testing.T) {
 func TestFormFitsThePane(t *testing.T) {
 	m := newModel(t, 110, 30)
 	clickLayer(t, m, layerID(idRow, 0))
-	clickField(t, m, "labels")
+	spec := ticket.FieldSpec{Name: ticket.FieldTitle, Kind: ticket.KindText}
+	m.openForm("Edit Title", []ticket.FieldSpec{spec}, nil, func(map[string]ticket.Value) tea.Cmd { return nil })
 	if m.form == nil {
 		t.Fatal("no form")
 	}
 	checkFrames(t, m, "form")
+	m.form = nil
+	clickField(t, m, "labels")
+	typeText(t, m, "o")
+	checkFrames(t, m, "tag box")
 }

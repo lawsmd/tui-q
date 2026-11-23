@@ -17,6 +17,12 @@ looks.
 - Windows, macOS and Linux.
 - Writes in the first version: status transitions, assignment and field edits, custom
   actions. Every ticket has "open in browser".
+- A list of tags opens the tag box under the field's label, inside the sidebar. It
+  shows the tags as buttons that take one off, a line that searches as it is typed
+  when the provider can search the field's values (`provider.Suggester`), and the
+  matches the ticket lacks, with the words typed offered as a new tag. Enter adds a
+  match, or each of a list typed with commas, and saves when nothing is typed. The box
+  writes once, on save. Azure DevOps searches the project's tags.
 - Comments can be added from the ticket view. Existing comments cannot be edited: the
   ticket model holds no ID for a comment and not the body as the platform stores it.
 - A single click opens a ticket. The context menu opens from a right-click, a
@@ -52,8 +58,12 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   `default_project` the project every query runs in. With `token_env` set the provider
   signs in with that personal access token; without it, with a token from
   `az account get-access-token`, using the program in `AZURE_CLI_PATH` when that is set.
-  A queue's query is WIQL. The provider lists no transitions and refuses every write
-  but a comment. Azure DevOps has one kind of comment, so `comment_kinds` is an error.
+  A queue's query is WIQL. The moves open to a work item are every state of its type but
+  the current one; Azure DevOps applies the process's rules when the move is saved. A
+  field of the profile can be edited when the work item's type has it and it is not
+  read-only: a person (the sign-in name), a field with allowed values (a menu), a number,
+  plain text, or the tags. Azure DevOps has one kind of comment, so `comment_kinds` is an
+  error.
 - `[[queue]]`: name, query in the platform's own language, `layout` (`table` or `board`),
   columns or card fields, refresh interval. A board names the field its lanes group by.
   Dropping a card on a status lane runs a transition; on any other lane, a field edit.
@@ -210,7 +220,7 @@ and `ToTicket`, so an instance can build a queue of its own from them.
 | 3 | Board layout, drag between lanes, context menu, sideways scrolling | done; a drop reports the move and changes nothing until phase 4 |
 | 4 | Writes: transitions with required-field forms, assignment, field edits | done against the fake provider and against recorded requests; not yet run against a live site |
 | 5 | `ext.Action` and the first instance-only action | done against the fake provider; the instance action is tested against a local stand-in for the site and not yet run against a live one |
-| 6 | Azure DevOps provider and a second instance; macOS and Linux run | provider with comments done against `httptest`; other writes, second instance, macOS and Linux run not yet |
+| 6 | Azure DevOps provider and a second instance; macOS and Linux run | provider with comments, moves, assignment and field edits done against `httptest`, and reads run against a live organisation; writes other than comments not yet run live; second instance, macOS and Linux run not yet |
 | 7 | Disk snapshots, timed refresh, themes, remaining extension points, docs | |
 
 Outside the phases: `tq order` prints the tickets of each queue in working order for an
