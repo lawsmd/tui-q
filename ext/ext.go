@@ -14,12 +14,22 @@ import (
 // DefaultTimeout bounds an action that sets no timeout of its own.
 const DefaultTimeout = 5 * time.Minute
 
+// DetailsSection is the title of the sidebar section that holds the
+// profile's fields.
+const DetailsSection = "Details"
+
 // Action is something an instance can do to a ticket beyond what the core
 // does. It is shown as a button in the ticket view and as a line in the
 // context menu of a row or card.
 type Action struct {
 	// Name is the text of the button and of the menu line.
 	Name string
+	// Section is the title of the sidebar section whose button the action
+	// is: DetailsSection, or the Title of one of the instance's sections.
+	// Its button is drawn at the foot of that section. Empty, or the title
+	// of a section not shown for the ticket, puts the button in the row
+	// over the title.
+	Section string
 	// Applies reports whether the action is offered for a ticket. Nil
 	// offers it for every ticket.
 	Applies func(t ticket.Ticket) bool
@@ -48,4 +58,27 @@ type Run struct {
 	Provider provider.Provider
 	// Progress names the step that is starting, for the status bar.
 	Progress func(step string)
+}
+
+// Section is a block of lines an instance adds to the top of the sidebar of
+// the ticket view, above the profile's fields. It is read each time the
+// ticket is loaded and after every change made to it.
+type Section struct {
+	// Title is the name on the rule over the section.
+	Title string
+	// Applies reports whether the section is shown for a ticket. Nil shows
+	// it for every ticket.
+	Applies func(t ticket.Ticket) bool
+	// Read returns the lines of the section for a ticket. It runs as a
+	// read: input stays free, and an error is shown in place of the lines.
+	Read func(ctx context.Context, t ticket.Ticket) ([]Line, error)
+}
+
+// Line is one line of a section. A line with actions can be clicked, and a
+// click opens a menu of them. A chosen action runs as one from WithActions
+// does, and the section is read again after it.
+type Line struct {
+	Text    string
+	Faint   bool
+	Actions []Action
 }

@@ -9,12 +9,16 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/lawsmd/tui-q/ext"
 	"github.com/lawsmd/tui-q/ticket"
 )
 
 // Ticket view layout limits.
 const (
-	sidebarWidth = 32
+	// The sidebar beside the main column is as wide as its widest label,
+	// value or button, within these bounds. Longer text wraps.
+	sidebarMinWidth = 18
+	sidebarMaxWidth = 32
 	// The sidebar sits beside the main column at this width and above, and
 	// over it below.
 	sideBySideWidth = 90
@@ -27,6 +31,9 @@ const (
 
 // editMark follows the label of a field that can be clicked to change it.
 const editMark = " ▾"
+
+// renameMark follows the title of a ticket that can be renamed.
+const renameMark = " ✎"
 
 // ticketTab is one open ticket.
 type ticketTab struct {
@@ -63,6 +70,11 @@ type ticketTab struct {
 	// files are the IDs of the attachments that can be clicked in the last
 	// frame drawn. A file layer's index points into it.
 	files []string
+	// sects are the instance's sections, by their place in the model's
+	// list, and sectHits the section lines that can be clicked in the last
+	// frame drawn. A section layer's index points into sectHits.
+	sects    []sectState
+	sectHits []sectHit
 }
 
 // labelLine is something clickable in a column: the label of an editable
@@ -83,6 +95,16 @@ type labelLine struct {
 
 	pic        bool
 	w, h, room int
+
+	// act marks a line of an instance's section that has actions: line
+	// sline of section sect.
+	act         bool
+	sect, sline int
+
+	// button marks a row of the button of the instance's action number
+	// action, drawn in the sidebar.
+	button bool
+	action int
 }
 
 // set replaces the ticket and drops the rendered cache.
@@ -132,14 +154,16 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 		button(idAssign, "assign"+editMark)
 	}
 	for _, i := range m.actionsFor(tab.t) {
-		button(layerID(idAction, i), m.actions[i].Name)
+		if !tab.inSidebar(m, m.actions[i]) {
+			button(layerID(idAction, i), m.actions[i].Name)
+		}
 	}
 	if tab.loading {
 		layers = append(layers, lipgloss.NewLayer(s.Faint.Render("loading...")).X(x).Y(a.y).Z(zScenery))
 	}
 
 	body := ticketBody(a)
-	tab.fields, tab.files = nil, nil
+	tab.fields, tab.files, tab.sectHits = nil, nil, nil
 	tab.fieldAt = map[string]area{}
 	tab.sideX = 0
 	if body.h <= 0 || body.w <= 0 {
@@ -174,6 +198,11 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 					tab.files = append(tab.files, l.file)
 				}
 				continue
+			case l.button:
+				id = layerID(idAction, l.action)
+			case l.act:
+				id = layerID(idSection, len(tab.sectHits))
+				tab.sectHits = append(tab.sectHits, sectHit{l.sect, l.sline})
 			case l.file != "":
 				id = layerID(idFile, len(tab.files))
 				tab.files = append(tab.files, l.file)
@@ -189,7 +218,8 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 
 	c, lines, labels, head, box := tab.boxedColumn(m, a)
 	if len(head) > 0 {
-		layers = append(layers, lipgloss.NewLayer(strings.Join(head, "\n")).X(body.x).Y(body.y).Z(zScenery))
+		_, titleLabels := tab.titleLines(m, body.w)
+		column(area{body.x, body.y, body.w, len(head)}, head, titleLabels, 0)
 	}
 	if c.h <= 0 {
 		return layers
@@ -208,8 +238,9 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 	layers = append(layers, lipgloss.NewLayer(divider).X(c.x+c.w+1).Y(c.y).Z(zScenery))
 
 	tab.sideX = c.x + c.w + 3
-	right, rightLabels := tab.sidebarLines(m, sidebarWidth)
-	tab.sideOffset = column(area{tab.sideX, c.y, sidebarWidth, c.h}, right, rightLabels, tab.sideOffset)
+	sw := tab.sideWidth(m)
+	right, rightLabels := tab.sidebarLines(m, sw)
+	tab.sideOffset = column(area{tab.sideX, c.y, sw, c.h}, right, rightLabels, tab.sideOffset)
 	return layers
 }
 
@@ -244,11 +275,11 @@ func (tab *ticketTab) mainColumn(m *Model, a area) (c area, lines []string, labe
 	if body.h <= 0 || body.w <= 0 {
 		return area{}, nil, nil, nil, -1
 	}
-	title := tab.titleLines(m, body.w)
+	title, titleLabels := tab.titleLines(m, body.w)
 	// A pane too short to hold the title over a column of its own scrolls
 	// the title with the rest, as a narrow one does.
 	if body.w < sideBySideWidth || body.h-len(title) < minColumnRows {
-		lines = title
+		lines, labels = title, titleLabels
 		side, sideLabels := tab.sidebarLines(m, body.w)
 		main, mainLabels := tab.mainLines(m, body.w)
 		at = len(lines) + len(side) + tab.mainBox
@@ -268,7 +299,7 @@ func (tab *ticketTab) mainColumn(m *Model, a area) (c area, lines []string, labe
 	if head == nil {
 		head = []string{}
 	}
-	c = area{x: body.x, y: body.y + len(head), w: body.w - sidebarWidth - 3, h: body.h - len(head)}
+	c = area{x: body.x, y: body.y + len(head), w: body.w - tab.sideWidth(m) - 3, h: body.h - len(head)}
 	lines, labels = tab.mainLines(m, c.w)
 	return c, lines, labels, head, tab.mainBox
 }
@@ -293,10 +324,16 @@ func (tab *ticketTab) labelFor(m *Model, name string, w int) string {
 
 // titleLines is the key and title of the ticket over one blank line, when
 // the profile puts the title in the main column. A title that wraps onto
-// more than titleRows lines is cut.
-func (tab *ticketTab) titleLines(m *Model, w int) []string {
+// more than titleRows lines is cut. When the title can be changed, a pencil
+// follows it, and the pencil is the one label.
+func (tab *ticketTab) titleLines(m *Model, w int) ([]string, []labelLine) {
 	if !slices.Contains(m.prof.Ticket.Main, ticket.FieldTitle) {
-		return nil
+		return nil, nil
+	}
+	mark := lipgloss.Width(renameMark)
+	edit := tab.editable(ticket.FieldTitle) && w > mark+1
+	if edit {
+		w -= mark
 	}
 	text := tab.t.Key + "  " + tab.t.Field(ticket.FieldTitle).String()
 	lines := strings.Split(lipgloss.Wrap(text, w, ""), "\n")
@@ -304,10 +341,20 @@ func (tab *ticketTab) titleLines(m *Model, w int) []string {
 		last := strings.Join(lines[titleRows-1:], " ")
 		lines = append(lines[:titleRows-1], ansi.Truncate(last, w, "…"))
 	}
+	var labels []labelLine
+	if edit {
+		last := len(lines) - 1
+		labels = []labelLine{{
+			name: ticket.FieldTitle,
+			line: last,
+			x:    lipgloss.Width(lines[last]) + 1,
+			text: m.styles.Label.Render(strings.TrimSpace(renameMark)),
+		}}
+	}
 	for i, line := range lines {
 		lines[i] = m.styles.Title.Render(line)
 	}
-	return append(lines, "")
+	return append(lines, ""), labels
 }
 
 // mainLines is the main column: the profile's main fields in order under a
@@ -483,27 +530,136 @@ func commenterColours(comments []ticket.Comment, palette []color.Color) map[stri
 	return colours
 }
 
-// sidebarLines is the profile's sidebar fields under a rule, a label over
-// each value.
+// sidebarLines is the instance's sections, then the profile's sidebar
+// fields under a rule, a label over each value, then the buttons of the
+// actions placed under the fields.
 func (tab *ticketTab) sidebarLines(m *Model, w int) ([]string, []labelLine) {
 	s := m.styles
-	lines := []string{s.rule("Details", w), ""}
-	var labels []labelLine
+	lines, labels := tab.sectionLines(m, w)
+	lines = append(lines, s.rule(ext.DetailsSection, w), "")
 	for _, name := range m.prof.Ticket.Sidebar {
 		if !tab.shows(name) {
 			continue
-		}
-		value := m.withIcon(name, tab.t.Field(name).String())
-		if value == "" {
-			value = s.Faint.Render("none")
 		}
 		text := tab.labelFor(m, name, w)
 		if tab.editable(name) {
 			labels = append(labels, labelLine{name: name, line: len(lines), text: text})
 		}
 		lines = append(lines, text)
-		lines = append(lines, strings.Split(lipgloss.Wrap(value, w, ""), "\n")...)
+		for _, value := range tab.sideValues(m, name) {
+			lines = append(lines, strings.Split(lipgloss.Wrap(value, w, ""), "\n")...)
+		}
+		lines = append(lines, "")
+	}
+	return tab.sideButtons(m, ext.DetailsSection, w, lines, labels)
+}
+
+// sideValues is the value of a sidebar field as lines: one per item of a
+// list, so a list takes height and not width, or "none" when it is empty.
+func (tab *ticketTab) sideValues(m *Model, name string) []string {
+	v := tab.t.Field(name)
+	if len(v.Items) > 0 {
+		return v.Items
+	}
+	if value := m.withIcon(name, v.String()); value != "" {
+		return []string{value}
+	}
+	return []string{m.styles.Faint.Render("none")}
+}
+
+// sideButtons adds the buttons of the actions placed under a sidebar
+// section to its lines, one under another, each followed by a blank line.
+// A name too long for the width wraps inside its button.
+func (tab *ticketTab) sideButtons(m *Model, section string, w int, lines []string, labels []labelLine) ([]string, []labelLine) {
+	s := m.styles
+	inner := w - s.Button.GetHorizontalFrameSize()
+	if inner < 1 {
+		return lines, labels
+	}
+	for _, i := range m.actionsFor(tab.t) {
+		a := m.actions[i]
+		if a.Section != section || !tab.inSidebar(m, a) {
+			continue
+		}
+		parts := strings.Split(lipgloss.Wrap(a.Name, inner, ""), "\n")
+		bw := 0
+		for _, p := range parts {
+			bw = max(bw, lipgloss.Width(p))
+		}
+		for _, p := range parts {
+			text := s.Button.Render(pad(p, bw))
+			labels = append(labels, labelLine{button: true, action: i, line: len(lines), text: text})
+			lines = append(lines, text)
+		}
 		lines = append(lines, "")
 	}
 	return lines, labels
+}
+
+// inSidebar reports whether an action's button is drawn in the sidebar: it
+// names a section that is shown for the ticket.
+func (tab *ticketTab) inSidebar(m *Model, a ext.Action) bool {
+	if a.Section == "" {
+		return false
+	}
+	if a.Section == ext.DetailsSection {
+		return true
+	}
+	for i, st := range tab.sects {
+		if st.shown && i < len(m.sections) && m.sections[i].Title == a.Section {
+			return true
+		}
+	}
+	return false
+}
+
+// sideWidth is the width of the sidebar beside the main column: that of
+// its widest rule title, label, value, clickable line or button word,
+// between sidebarMinWidth and sidebarMaxWidth. A plain line of an
+// instance's section counts by its longest word, since it wraps.
+func (tab *ticketTab) sideWidth(m *Model) int {
+	need := 0
+	fits := func(n int) { need = max(need, n) }
+	for i, st := range tab.sects {
+		if !st.shown || i >= len(m.sections) {
+			continue
+		}
+		fits(ruleIndent + 2 + lipgloss.Width(m.sections[i].Title))
+		for _, l := range st.lines {
+			if len(l.Actions) > 0 {
+				fits(lipgloss.Width(l.Text + editMark))
+			} else {
+				fits(longestWord(l.Text))
+			}
+		}
+	}
+	fits(ruleIndent + 2 + lipgloss.Width(ext.DetailsSection))
+	for _, name := range m.prof.Ticket.Sidebar {
+		if !tab.shows(name) {
+			continue
+		}
+		label := m.label(name)
+		if tab.editable(name) {
+			label += editMark
+		}
+		fits(lipgloss.Width(label))
+		for _, v := range tab.sideValues(m, name) {
+			fits(lipgloss.Width(v))
+		}
+	}
+	for _, i := range m.actionsFor(tab.t) {
+		if a := m.actions[i]; tab.inSidebar(m, a) {
+			fits(longestWord(a.Name) + m.styles.Button.GetHorizontalFrameSize())
+		}
+	}
+	return clamp(need, sidebarMinWidth, sidebarMaxWidth)
+}
+
+// longestWord is the width of the widest word of text.
+func longestWord(text string) int {
+	n := 0
+	for _, w := range strings.Fields(text) {
+		n = max(n, lipgloss.Width(w))
+	}
+	return n
 }

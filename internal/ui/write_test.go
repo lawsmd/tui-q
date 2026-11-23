@@ -242,8 +242,11 @@ func TestTicketViewEditsFields(t *testing.T) {
 	if got := stored(t, m, key).Field("labels").String(); got != "auth, billing" {
 		t.Fatalf("labels = %q", got)
 	}
-	if !strings.Contains(screen(m), "auth, billing") {
-		t.Fatalf("tab does not show the new labels\n%s", screen(m))
+	// The sidebar lists the tags one under another.
+	side, _ := m.tabs[0].sidebarLines(m, sidebarMinWidth)
+	plain := strings.Join(plainLines(side), "\n")
+	if !strings.Contains(plain, "\nauth\nbilling\n") {
+		t.Fatalf("sidebar does not list the new labels\n%s", plain)
 	}
 
 	// Esc closes the box without writing.
@@ -309,8 +312,10 @@ func TestTagBoxOpensUnderItsField(t *testing.T) {
 	if box.GetY() != at.y+1 {
 		t.Errorf("box at row %d, label at row %d", box.GetY(), at.y)
 	}
-	if left, right := box.GetX(), box.GetX()+lipgloss.Width(box.GetContent()); left < tab.sideX-2 || right > m.w {
-		t.Errorf("box spans columns %d-%d, sidebar starts at %d", left, right, tab.sideX)
+	// A sidebar narrower than the box leaves it reaching into the main
+	// column, but it stays on screen and covers the label.
+	if left, right := box.GetX(), box.GetX()+lipgloss.Width(box.GetContent()); left > at.x || right > m.w {
+		t.Errorf("box spans columns %d-%d, label at column %d", left, right, at.x)
 	}
 
 	// A click outside the box closes it while nothing has changed, and
@@ -387,4 +392,33 @@ func TestFormFitsThePane(t *testing.T) {
 	clickField(t, m, "labels")
 	typeText(t, m, "o")
 	checkFrames(t, m, "tag box")
+}
+
+// The pencil after the title renames the ticket, both when the title stays
+// over the main column and when it scrolls with the rest in a narrow pane.
+func TestPencilRenamesTheTicket(t *testing.T) {
+	for _, w := range []int{120, 60} {
+		m := newModel(t, w, 40)
+		clickLayer(t, m, layerID(idRow, 0))
+		key := m.tabs[0].t.Key
+		if !strings.Contains(screen(m), strings.TrimSpace(renameMark)) {
+			t.Fatalf("width %d: no pencil after the title\n%s", w, screen(m))
+		}
+		clickField(t, m, ticket.FieldTitle)
+		if m.form == nil {
+			t.Fatalf("width %d: no form after a click on the pencil", w)
+		}
+		if !strings.Contains(screen(m), "Rename "+key) {
+			t.Fatalf("width %d: form is not named for the rename\n%s", w, screen(m))
+		}
+		send(t, m, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+		typeText(t, m, "A new name")
+		send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+		if got := stored(t, m, key).Title; got != "A new name" {
+			t.Fatalf("width %d: title = %q", w, got)
+		}
+		if !strings.Contains(screen(m), key+"  A new name "+strings.TrimSpace(renameMark)) {
+			t.Fatalf("width %d: tab does not show the new title\n%s", w, screen(m))
+		}
+	}
 }

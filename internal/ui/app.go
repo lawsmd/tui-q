@@ -69,9 +69,11 @@ const (
 	idPickCancel = "pickcancel"
 	idGear       = "gear"
 	idAction     = "action"
-	idJump       = "jump"
-	idPagePrev   = "pageprev"
-	idPageNext   = "pagenext"
+	// idSection is a line of an instance's sidebar section that has actions.
+	idSection  = "section"
+	idJump     = "jump"
+	idPagePrev = "pageprev"
+	idPageNext = "pagenext"
 	// idFile is the line of an attachment in a ticket.
 	idFile = "file"
 	// idCommentOrder is the control that turns the order of comments round.
@@ -140,6 +142,8 @@ type Model struct {
 	prefs *prefs.Store
 	// actions are the instance's own actions on a ticket.
 	actions []ext.Action
+	// sections are the instance's own sections of the ticket sidebar.
+	sections []ext.Section
 
 	w, h int
 
@@ -225,6 +229,9 @@ type Options struct {
 	Prefs *prefs.Store
 	// Actions are the instance's own actions on a ticket.
 	Actions []ext.Action
+	// Sections are the instance's own sections at the top of the ticket
+	// sidebar.
+	Sections []ext.Section
 	// Ticket is the ID of one ticket to show by itself. When it is set the
 	// interface loads no queue and shows nothing but that ticket.
 	Ticket string
@@ -270,6 +277,7 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 		prov:        prov,
 		prefs:       opts.Prefs,
 		actions:     opts.Actions,
+		sections:    opts.Sections,
 		drafts:      opts.Drafts,
 		files:       opts.Files,
 		openFile:    browser.OpenFile,
@@ -610,6 +618,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				tab.loading = false
 			}
 		}
+		return m, m.readSections(msg.t)
+
+	case sectionReadMsg:
+		m.sectionRead(msg)
 
 	case meMsg:
 		m.me = msg.me
@@ -622,6 +634,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case jumpedMsg:
 		m.showLoaded(msg)
+		return m, m.readSections(msg.t)
 
 	case transitionsMsg:
 		m.moveMenu(msg.t, msg.trs, msg.x, msg.y)
@@ -648,11 +661,12 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.notice = msg.note
+		sections := m.readSections(msg.t)
 		if m.only != "" {
-			return m, nil
+			return m, sections
 		}
 		// The change may have moved the ticket into or out of any queue.
-		return m, m.reloadQueues()
+		return m, tea.Batch(sections, m.reloadQueues())
 
 	case tea.KeyPressMsg:
 		if m.form != nil {
@@ -981,6 +995,8 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		if err != nil {
 			m.notice = "The setting is on for now, but saving it failed: " + err.Error()
 		}
+	case idSection:
+		m.sectionMenu(n, ev.X, ev.Y)
 	case idMove, idAssign, idField, idAction:
 		if m.activeTab < 0 {
 			return nil
@@ -988,7 +1004,9 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		tab := m.tabs[m.activeTab]
 		switch {
 		case kind == idAction:
-			return m.runAction(n, tab.t)
+			if n >= 0 && n < len(m.actions) {
+				return m.runAction(m.actions[n], tab.t)
+			}
 		case kind == idMove:
 			m.moveMenu(tab.t, tab.transitions, ev.X, ev.Y)
 		case kind == idAssign:

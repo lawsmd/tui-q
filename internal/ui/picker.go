@@ -298,7 +298,7 @@ func (m *Model) pickerLayers() []*lipgloss.Layer {
 			p.at = at
 		}
 	}
-	w := clamp(p.at.w, min(sidebarWidth, m.w), min(pickMaxWidth, m.w))
+	w := clamp(p.at.w, min(sidebarMaxWidth, m.w), min(pickMaxWidth, m.w))
 	inner := max(w-4, 1)
 
 	type spot struct {

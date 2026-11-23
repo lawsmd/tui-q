@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lawsmd/tui-q/ext"
 	"github.com/lawsmd/tui-q/ticket"
@@ -128,7 +130,7 @@ func TestStatusBarShowsTheStepOfARunningAction(t *testing.T) {
 		<-finish
 		return "", nil
 	}}}
-	cmd := m.runAction(0, m.queues[0].tickets[0])
+	cmd := m.runAction(m.actions[0], m.queues[0].tickets[0])
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -142,5 +144,66 @@ func TestStatusBarShowsTheStepOfARunningAction(t *testing.T) {
 	<-done
 	if m.ops.Busy() {
 		t.Error("still busy after the action ended")
+	}
+}
+
+// An action placed under a sidebar section has its button there and not in
+// the row over the title. One placed under a section the ticket does not
+// show stays in the row.
+func TestActionButtonSitsUnderItsSidebarSection(t *testing.T) {
+	for _, w := range []int{110, 60} {
+		m := newModel(t, w, 40)
+		var ran []string
+		run := func(name string) func(context.Context, ext.Run) (string, error) {
+			return func(context.Context, ext.Run) (string, error) { ran = append(ran, name); return "", nil }
+		}
+		m.actions = []ext.Action{
+			{Name: "close and hand back", Section: ext.DetailsSection, Run: run("details")},
+			{Name: "elsewhere", Section: "no such section", Run: run("row")},
+		}
+		clickLayer(t, m, layerID(idRow, 0))
+		m.View()
+		tab := m.tabs[0]
+		button := m.comp.GetLayer(layerID(idAction, 0))
+		if button == nil {
+			t.Fatalf("width %d: no button for the sidebar action\n%s", w, screen(m))
+		}
+		// A narrow pane has no room left in the row for it.
+		if row := m.comp.GetLayer(layerID(idAction, 1)); w >= sideBySideWidth && (row == nil || row.GetY() >= button.GetY()) {
+			t.Fatalf("width %d: the other action is not in the row over the title", w)
+		}
+		if w >= sideBySideWidth && button.GetX() != tab.sideX {
+			t.Errorf("width %d: button at column %d, sidebar at %d", w, button.GetX(), tab.sideX)
+		}
+		out := screen(m)
+		if details := strings.Index(out, "Details"); details < 0 || details > strings.Index(out, "close") {
+			t.Errorf("width %d: button not under Details\n%s", w, out)
+		}
+		checkFrames(t, m, "ticket with a sidebar button")
+		clickLayer(t, m, layerID(idAction, 0))
+		if len(ran) != 1 || ran[0] != "details" {
+			t.Fatalf("width %d: runs = %q", w, ran)
+		}
+	}
+}
+
+// The sidebar is as wide as what it holds, within its bounds.
+func TestSidebarWidthFollowsItsContent(t *testing.T) {
+	m := newModel(t, 120, 40)
+	clickLayer(t, m, layerID(idRow, 0))
+	tab := m.tabs[0]
+	w := tab.sideWidth(m)
+	if w < sidebarMinWidth || w >= sidebarMaxWidth {
+		t.Fatalf("width %d for the demo ticket", w)
+	}
+	lines, _ := tab.sidebarLines(m, w)
+	for _, l := range lines {
+		if lipgloss.Width(l) > w {
+			t.Errorf("line %q is wider than %d", ansi.Strip(l), w)
+		}
+	}
+	tab.t.Fields = map[string]ticket.Value{"labels": ticket.Text(strings.Repeat("x", 80))}
+	if got := tab.sideWidth(m); got != sidebarMaxWidth {
+		t.Errorf("width %d with a long value, want %d", got, sidebarMaxWidth)
 	}
 }

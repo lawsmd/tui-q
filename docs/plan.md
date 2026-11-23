@@ -17,7 +17,11 @@ looks.
 - Windows, macOS and Linux.
 - Writes in the first version: status transitions, assignment and field edits, custom
   actions. Every ticket has "open in browser".
-- A list of tags opens the tag box under the field's label, inside the sidebar. It
+- The sidebar is as wide as its widest label, value or button, between 18 and 32
+  cells, and longer text wraps. A list value shows one item to a line.
+- A code block in a ticket wraps a long line onto as many rows as it needs.
+- A list of tags opens the tag box under the field's label, reaching left out of a
+  narrow sidebar. It
   shows the tags as buttons that take one off, a line that searches as it is typed
   when the provider can search the field's values (`provider.Suggester`), and the
   matches the ticket lacks, with the words typed offered as a new tag. Enter adds a
@@ -37,7 +41,7 @@ instance first needs it.
 
 | Extension | Purpose |
 |---|---|
-| `ext.Action` | a button in the ticket view and a context menu entry; gets the ticket, the provider, the answers to its own questions, and a progress reporter that writes to the status bar. Built; passed with `tuiq.WithActions` |
+| `ext.Action` | a button in the ticket view and a context menu entry; gets the ticket, the provider, the answers to its own questions, and a progress reporter that writes to the status bar. `Section` puts its button at the foot of a sidebar section instead of the row over the title. Built; passed with `tuiq.WithActions` |
 | `ext.FieldRenderer` | custom drawing of one field in tables, cards and the sidebar |
 | `ext.Theme` | styles for the whole program |
 | `ext.Panel` | an extra section in the ticket view |

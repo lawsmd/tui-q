@@ -29,6 +29,7 @@ import (
 type config struct {
 	profileText string
 	actions     []ext.Action
+	sections    []ext.Section
 }
 
 // Option changes how Run behaves.
@@ -45,6 +46,12 @@ func WithProfile(text string) Option {
 // the ticket view and a line in the context menu for each.
 func WithActions(actions ...ext.Action) Option {
 	return func(c *config) { c.actions = append(c.actions, actions...) }
+}
+
+// WithSections adds the instance's own sections to the top of the sidebar
+// of the ticket view, in the order given.
+func WithSections(sections ...ext.Section) Option {
+	return func(c *config) { c.sections = append(c.sections, sections...) }
 }
 
 // usage is printed by "tq help" and with the error for an unknown command.
@@ -96,7 +103,7 @@ func Run(opts ...Option) error {
 	}
 	// Settings changed in the interface are kept per site. Without a place
 	// to keep them they last until the program exits.
-	uiOpts := ui.Options{Actions: cfg.actions}
+	uiOpts := ui.Options{Actions: cfg.actions, Sections: cfg.sections}
 	if command != "" {
 		id, err := ticketArg(prov, command, args)
 		if err != nil {

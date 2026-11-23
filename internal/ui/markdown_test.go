@@ -107,9 +107,18 @@ func TestCodeBlockFitsTheWidth(t *testing.T) {
 			continue
 		}
 		plain := plainLines(lines)
-		cut := plain[len(plain)-2]
-		if !strings.HasSuffix(cut, "…") || ansi.StringWidth(cut) != w {
-			t.Errorf("width %d: long line %q is not cut to the width with a mark", w, cut)
+		// The long line wraps onto rows that hold every word of it.
+		var code []string
+		for _, l := range plain[:len(plain)-1] {
+			if rest, ok := strings.CutPrefix(l, "  ▎ "); ok && rest != "sql" {
+				code = append(code, strings.TrimRight(rest, " "))
+			}
+		}
+		if len(code) < 2 {
+			t.Errorf("width %d: long line did not wrap: %q", w, code)
+		}
+		if got := strings.Join(strings.Fields(strings.Join(code, " ")), " "); got != long {
+			t.Errorf("width %d: wrapped rows hold %q", w, got)
 		}
 		if last := plain[len(plain)-1]; last != "  ▎     short -- tab" {
 			t.Errorf("width %d: last line %q", w, last)

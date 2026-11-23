@@ -24,11 +24,7 @@ func (m *Model) actionsFor(t ticket.Ticket) []int {
 
 // runAction starts an action on a ticket. When the action has questions,
 // a form asks them first and saving the form starts the action.
-func (m *Model) runAction(i int, t ticket.Ticket) tea.Cmd {
-	if i < 0 || i >= len(m.actions) {
-		return nil
-	}
-	a := m.actions[i]
+func (m *Model) runAction(a ext.Action, t ticket.Ticket) tea.Cmd {
 	var specs []ticket.FieldSpec
 	if a.Fields != nil {
 		specs = a.Fields(t)

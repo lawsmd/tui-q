@@ -377,6 +377,9 @@ func (m *Model) editField(tab *ticketTab, name string, x, y int) tea.Cmd {
 		return nil
 	}
 	title := "Edit " + spec.Label + " on " + t.Key
+	if name == ticket.FieldTitle {
+		title = "Rename " + t.Key
+	}
 	values := map[string]ticket.Value{name: current}
 	return m.openForm(title, []ticket.FieldSpec{spec}, values, func(values map[string]ticket.Value) tea.Cmd {
 		return m.setField(t, name, values[name], nil)

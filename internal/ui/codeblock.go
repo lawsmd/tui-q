@@ -157,8 +157,8 @@ func (s Styles) highlight(code string, lexer chroma.Lexer) []codeLine {
 
 // codeBlockLines draws a code block as lines exactly w cells wide: margin
 // blank cells, a bar, and the code on a tint. The first row names the
-// language when one is known. A line too long for the width is cut and
-// ends with an ellipsis.
+// language when one is known. A line too long for the width wraps onto as
+// many rows as it needs, so the whole block is always shown.
 func (s Styles) codeBlockLines(code, lang string, w, margin int) []string {
 	code = strings.ReplaceAll(ansi.Strip(code), "\t", "    ")
 	code = strings.ReplaceAll(code, "\r", "")
@@ -180,22 +180,31 @@ func (s Styles) codeBlockLines(code, lang string, w, margin int) []string {
 		return nil
 	}
 	lead := strings.Repeat(" ", margin) + s.CodeBar.Render(codeBar) + s.Code.Render(" ")
-	row := func(plain, styled string) string {
-		width := ansi.StringWidth(plain)
-		if width > inner {
-			styled = ansi.Truncate(styled, inner-1, "") + s.CodeLabel.Render("…")
-			width = ansi.StringWidth(ansi.Strip(styled))
+	// rows wraps one line of code at spaces where it can and mid-word where
+	// it cannot, and tints each row to the full width.
+	rows := func(plain, styled string) []string {
+		parts := []string{styled}
+		if ansi.StringWidth(plain) > inner {
+			parts = strings.Split(lipgloss.Wrap(styled, inner, ""), "\n")
 		}
-		return lead + styled + s.Code.Render(strings.Repeat(" ", max(inner-width, 0)))
+		out := make([]string, len(parts))
+		for i, p := range parts {
+			// Wrap can leave a run of leading spaces wider than a very
+			// narrow block; only blank cells are cut.
+			p = ansi.Truncate(p, inner, "")
+			gap := max(inner-ansi.StringWidth(p), 0)
+			out[i] = lead + p + s.Code.Render(strings.Repeat(" ", gap))
+		}
+		return out
 	}
 
 	lexer, label := lexerFor(code, lang)
 	var out []string
 	if label != "" {
-		out = append(out, row(label, s.CodeLabel.Render(label)))
+		out = append(out, rows(label, s.CodeLabel.Render(label))...)
 	}
 	for _, line := range s.highlight(code, lexer) {
-		out = append(out, row(line.plain, line.styled))
+		out = append(out, rows(line.plain, line.styled)...)
 	}
 	return out
 }
