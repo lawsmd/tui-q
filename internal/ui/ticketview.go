@@ -491,7 +491,10 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 		tab.mainBox = len(lines)
 
 		colours := commenterColours(tab.t.Comments, s.Commenters)
-		for _, n := range order {
+		for i, n := range order {
+			if i > 0 {
+				lines = append(lines, "") // a blank line between comments
+			}
 			c := tab.t.Comments[n]
 			author, border := s.CommentAuthor, s.CommentBorder
 			if colour, ok := colours[c.Author]; ok {
