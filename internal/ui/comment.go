@@ -18,11 +18,12 @@ import (
 // The comment box is part of every ticket view, under the heading of the
 // comments and beside the newest one, and scrolls with them: one line
 // that names it and holds its buttons, and the rows of the editor under
-// that line. It is short while the keyboard is elsewhere and grows when it
-// is written in. The editor is placed over the rows that are in view.
+// that line. It is short while it is empty and the keyboard is elsewhere,
+// and grows when it is written in or holds text, whoever put the text there.
+// The editor is placed over the rows that are in view.
 const (
-	// composerIdleRows is the most rows the editor has while the keyboard
-	// is elsewhere, and composerRows the most it has while written in.
+	// composerIdleRows is the most rows an empty editor has while the
+	// keyboard is elsewhere, and composerRows the most it has otherwise.
 	composerIdleRows = 3
 	composerRows     = 21
 	// composerSmallRows is the fewest rows a box being written in has,
@@ -48,6 +49,9 @@ type composer struct {
 	covered bool
 	// writing says the box has the keyboard, or gets it once it has opened.
 	writing bool
+	// filled says the box holds text other than spaces: a draft it opened
+	// with, or text typed or put there by another program since.
+	filled bool
 	// dragging says a mouse button went down inside the box and has not
 	// come up, so the pointer's moves are the box's.
 	dragging bool
@@ -164,11 +168,12 @@ func (m *Model) openComposer(t ticket.Ticket) tea.Cmd {
 		return nil
 	}
 	m.closeComposer(true)
-	m.composer = &composer{id: t.ID, key: t.Key}
+	draft := m.drafts.Get(t.ID)
+	m.composer = &composer{id: t.ID, key: t.Key, filled: strings.TrimSpace(draft) != ""}
 	open := m.openEditor
 	cfg := editor.Config{
 		Format:     cm.CommentFormat(),
-		Markdown:   m.drafts.Get(t.ID),
+		Markdown:   draft,
 		Title:      "comment on " + t.Key,
 		Meta:       map[string]string{"ticket": t.Key},
 		Background: m.styles.ComposerBack,
@@ -363,15 +368,15 @@ func ticketBody(content area) area {
 }
 
 // editorRows is how many rows the editor of the comment box has in a
-// column h rows high. Written in, it has three quarters of the column, and
-// never more than leaves the border above and below it in view with it,
-// where the column has the three rows that takes.
+// column h rows high. Written in or holding text, it has three quarters of
+// the column, and never more than leaves the border above and below it in
+// view with it, where the column has the three rows that takes.
 func editorRows(c *composer, h int) int {
 	if c == nil || c.box == nil || h < 2 {
 		return 0
 	}
 	room := max(h-2, 1)
-	if !c.writing {
+	if !c.writing && !c.filled {
 		return min(composerIdleRows, room)
 	}
 	return min(clamp(h*3/4, composerSmallRows, composerRows), room)
@@ -577,6 +582,7 @@ func (m *Model) composerChanged() tea.Cmd {
 		return nil
 	}
 	c.changed = true
+	c.filled = strings.TrimSpace(c.box.Text()) != ""
 	c.saves++
 	n := c.saves
 	return tea.Batch(c.box.Changes(), tea.Tick(draftDelay, func(time.Time) tea.Msg { return draftSaveMsg{n: n} }))

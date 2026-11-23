@@ -194,6 +194,24 @@ func TestEveryTicketViewHasACommentBox(t *testing.T) {
 		t.Fatalf("after esc: focused=%v box at %+v, want the %d rows it had", b.focused, b.rect, idle.h)
 	}
 
+	// Text put in the box by another program makes it tall without the
+	// keyboard, and it stays tall until it is empty again.
+	b.text = "a draft from elsewhere"
+	send(t, m, editor.Changed{})
+	if b.focused || b.rect.h <= idle.h {
+		t.Fatalf("holding text: focused=%v box at %+v, idle was %+v", b.focused, b.rect, idle)
+	}
+	clickLayer(t, m, idComment)
+	send(t, m, esc)
+	if b.rect.h <= idle.h {
+		t.Fatalf("holding text after esc: box at %+v, idle was %+v", b.rect, idle)
+	}
+	b.text = " \n"
+	send(t, m, editor.Changed{})
+	if b.rect.h != idle.h {
+		t.Fatalf("emptied: box at %+v, want the %d rows it had", b.rect, idle.h)
+	}
+
 	// The users offered after "@" come from the provider.
 	users, err := b.cfg.Mentions(context.Background(), "al")
 	if err != nil || len(users) != 1 || users[0].Name != "alex" {
@@ -651,6 +669,22 @@ func TestCommentBoxOpenedForATicketNoLongerShownIsClosed(t *testing.T) {
 	drain(t, m, cmd)
 	if b := eds.box(t); b == first || !b.closed || b.started || m.composer != nil {
 		t.Fatalf("closed=%v started=%v composer=%v", b.closed, b.started, m.composer)
+	}
+}
+
+func TestCommentBoxWithADraftOpensTall(t *testing.T) {
+	m, eds := newCommenting(t, 110, 40, Options{})
+	b := openBox(t, m, eds)
+	idle := b.rect.h
+	id := m.tabs[m.activeTab].t.ID
+	if err := m.drafts.Set(id, "left from before"); err != nil {
+		t.Fatal(err)
+	}
+	m.closeComposer(false)
+	drain(t, m, m.syncComposer())
+	b = eds.box(t)
+	if b.cfg.Markdown != "left from before" || b.focused || b.rect.h <= idle {
+		t.Fatalf("reopened with draft %q: focused=%v box at %+v, idle was %d rows", b.cfg.Markdown, b.focused, b.rect, idle)
 	}
 }
 
