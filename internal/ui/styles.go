@@ -46,6 +46,8 @@ type Styles struct {
 	// PageOff the same button with no page to turn to.
 	Page    lipgloss.Style
 	PageOff lipgloss.Style
+	// Info is the mark on a bucket heading that shows what the bucket holds.
+	Info lipgloss.Style
 	// LaneTarget marks the lane a dragged card would be dropped on.
 	LaneTarget lipgloss.Style
 	CardBorder lipgloss.Style
@@ -171,6 +173,7 @@ func DefaultStyles() Styles {
 		Bucket:     lipgloss.NewStyle().Background(band).Foreground(bright).Bold(true),
 		Page:       lipgloss.NewStyle().Background(band).Foreground(bright).Bold(true),
 		PageOff:    lipgloss.NewStyle().Background(band).Foreground(dim),
+		Info:       lipgloss.NewStyle().Background(band).Foreground(cyan),
 		LaneTarget: lipgloss.NewStyle().Background(accent).Foreground(onLight).Bold(true),
 		CardBorder: lipgloss.NewStyle().Foreground(dim),
 		CardKey:    lipgloss.NewStyle().Foreground(accent).Bold(true),

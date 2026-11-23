@@ -27,6 +27,14 @@ const (
 // moreGlyph is drawn on the menu button of a row or card.
 const moreGlyph = "⋮"
 
+// linkGlyph is drawn on the button at the left end of a table row that
+// copies the ticket's link, and linkWidth is the room it takes before the
+// first column.
+const (
+	linkGlyph = "⧉"
+	linkWidth = 2
+)
+
 // queue is one top-level tab and the tickets its query returned.
 type queue struct {
 	cfg *profile.Queue
@@ -36,7 +44,10 @@ type queue struct {
 	tickets []ticket.Ticket
 	from    []int
 	// pages is the paging state of each bucket, by its index.
-	pages    []bucketPage
+	pages []bucketPage
+	// infoAt is where the last frame drew the info mark of each bucket
+	// that has one, by the index of the bucket.
+	infoAt   map[int][2]int
 	loading  bool
 	loadedAt time.Time
 	// offset is the index of the first ticket drawn in a table.
@@ -122,6 +133,9 @@ type line struct {
 	// its pages can be turned.
 	pager      int
 	prev, next bool
+	// about is set on the heading of a bucket whose profile has About,
+	// to the index of the bucket plus one.
+	about int
 }
 
 // sections sorts the tickets of a table with buckets: one list of ticket
@@ -149,6 +163,9 @@ func (q *queue) lines() []line {
 		if j < len(q.cfg.Buckets) {
 			b := q.cfg.Buckets[j]
 			head.heading = fmt.Sprintf("%s (%d)", b.Name, len(members))
+			if b.About != "" {
+				head.about = j + 1
+			}
 			if b.PageSize > 0 {
 				st := q.page(j)
 				total, more := st.total, st.more
@@ -238,7 +255,7 @@ func (q *queue) scrollSideways(n int) {
 // with a menu button at its right end.
 func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 	s := m.styles
-	avail := a.w - 1 - moreWidth
+	avail := a.w - 1 - linkWidth - moreWidth
 
 	// Scrolling right is allowed only while columns are hidden on the
 	// right, so step back from an offset that hides nothing.
@@ -268,13 +285,14 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 		header[i] = fit(m.label(c.name), c.width)
 	}
 	gap := strings.Repeat(" ", columnGap)
+	lead := strings.Repeat(" ", 1+linkWidth)
 	layers := []*lipgloss.Layer{
-		lipgloss.NewLayer(s.Header.Render(fit(" "+strings.Join(header, gap), a.w))).X(a.x).Y(a.y).Z(zScenery),
+		lipgloss.NewLayer(s.Header.Render(fit(lead+strings.Join(header, gap), a.w))).X(a.x).Y(a.y).Z(zScenery),
 	}
 	layers = append(layers, arrows(s, a.x+a.w-moreWidth, a.y, q.colOffset > 0, hidden > 0)...)
 
 	// The line between two headings is a handle that sizes a column.
-	x := a.x + 1
+	x := a.x + 1 + linkWidth
 	for i := 0; i < len(cols)-1; i++ {
 		x += cols[i].width
 		if target, _ := q.edge(i); !m.icons(cols[target].name) {
@@ -285,6 +303,7 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 	}
 
 	lines := q.lines()
+	q.infoAt = map[int][2]int{}
 	visible := a.h - 1
 	q.offset = clamp(q.offset, 0, len(lines)-visible)
 	for row := 0; row < visible && q.offset+row < len(lines); row++ {
@@ -295,6 +314,12 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 		if ln.ticket < 0 {
 			heading := s.Bucket.Render(fit(" "+ln.heading, a.w))
 			layers = append(layers, lipgloss.NewLayer(heading).X(a.x).Y(a.y+1+row).Z(zScenery))
+			// The info mark sits at the right end, just left of the pager.
+			if x := a.x + a.w - moreWidth - lipgloss.Width(infoGlyph); ln.about > 0 && x > a.x+2+lipgloss.Width(ln.heading) {
+				y := a.y + 1 + row
+				layers = append(layers, lipgloss.NewLayer(s.Info.Render(infoGlyph)).ID(layerID(idBucketInfo, ln.about-1)).X(x).Y(y).Z(zButton))
+				q.infoAt[ln.about-1] = [2]int{x, y}
+			}
 			if ln.pager > 0 {
 				layers = append(layers, pager(s, a.x+a.w-moreWidth, a.y+1+row, ln.pager-1, ln.prev, ln.next)...)
 			}
@@ -311,12 +336,16 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 			style = s.RowAlt
 		}
 		y := a.y + 1 + row
-		line := style.Render(fit(" "+strings.Join(cells, gap), a.w))
+		line := style.Render(fit(lead+strings.Join(cells, gap), a.w))
 		more := style.Inherit(s.More).Render("  " + moreGlyph + "  ")
 		layers = append(layers,
 			lipgloss.NewLayer(line).ID(layerID(idRow, index)).X(a.x).Y(y).Z(zItem),
 			lipgloss.NewLayer(more).ID(layerID(idMore, index)).X(a.x+a.w-moreWidth).Y(y).Z(zButton),
 		)
+		if t.URL != "" {
+			link := style.Inherit(s.More).Render(linkGlyph)
+			layers = append(layers, lipgloss.NewLayer(link).ID(layerID(idRowLink, index)).X(a.x+1).Y(y).Z(zButton))
+		}
 	}
 	return layers
 }
@@ -433,4 +462,41 @@ func (q *queue) columns(m *Model, width, offset int) (cols []column, hidden int)
 		picked = append(picked[:drop], picked[drop+1:]...)
 		hidden++
 	}
+}
+
+// infoGlyph is the mark on the heading of a bucket that explains it.
+const infoGlyph = "(i)"
+
+// tooltipLayers is the box with the About text of the bucket whose info
+// mark the mouse is over, under the mark, or above it when there is no
+// room under it. It is nil when the mouse is over no mark of the queue on
+// screen.
+func (m *Model) tooltipLayers() []*lipgloss.Layer {
+	kind, j := splitID(m.hover)
+	if kind != idBucketInfo || m.activeTab >= 0 || m.only != "" || m.menu != nil || m.form != nil || m.picker != nil || m.drag != nil {
+		return nil
+	}
+	q := m.queues[m.activeQueue]
+	at, ok := q.infoAt[j]
+	if !ok || j >= len(q.cfg.Buckets) {
+		return nil
+	}
+	s := m.styles
+	inner := min(56, m.w-4)
+	if inner < 1 {
+		return nil
+	}
+	var lines []string
+	for _, l := range strings.Split(lipgloss.Wrap(q.cfg.Buckets[j].About, inner, ""), "\n") {
+		lines = append(lines, s.MenuItem.Render(fit(l, inner)))
+	}
+	rows := box(lines, inner+4, s.MenuBorder)
+	// The box ends where the mark ends, since the mark is at the right.
+	x := clamp(at[0]+lipgloss.Width(infoGlyph)-(inner+4), 0, m.w-(inner+4))
+	y := at[1] + 1
+	if y+len(rows) > m.h-1 {
+		y = at[1] - len(rows)
+	}
+	y = clamp(y, 0, m.h-len(rows))
+	return []*lipgloss.Layer{lipgloss.NewLayer(strings.Join(rows, "\n")).X(x).Y(y).Z(zMenu)}
 }

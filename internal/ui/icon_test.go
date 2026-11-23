@@ -36,15 +36,16 @@ func TestIconColumn(t *testing.T) {
 	drain(t, m, m.Init())
 
 	// The column is one cell wide, has no heading, and the key follows it.
+	// The copy-link button comes before every column.
 	rows := strings.Split(screen(m), "\n")
-	if !strings.HasPrefix(rows[2], "    Key") {
+	if !strings.HasPrefix(rows[2], "      Key") {
 		t.Fatalf("header: %q", rows[2])
 	}
 	q := m.queues[0]
 	for i, tk := range q.tickets[:3] {
-		want := " ·  " + tk.Key
+		want := " " + linkGlyph + " ·  " + tk.Key
 		if tk.Type == "Bug" {
-			want = " ¤  " + tk.Key
+			want = " " + linkGlyph + " ¤  " + tk.Key
 		}
 		if !strings.HasPrefix(rows[3+i], want) {
 			t.Errorf("row %d: %q, want it to start %q", i, rows[3+i], want)

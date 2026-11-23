@@ -58,6 +58,7 @@ func (m *Model) compose() *lipgloss.Compositor {
 	}
 
 	root.AddLayers(m.statusBar(w).Y(h - 1).Z(zItem))
+	root.AddLayers(m.tooltipLayers()...)
 	if m.menu != nil {
 		root.AddLayers(m.menuLayers()...)
 	}

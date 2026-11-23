@@ -99,3 +99,40 @@ func TestBucketsAndTheSingleTabRow(t *testing.T) {
 		t.Fatalf("%d of %d tickets shown with hide_unmatched:\n%s", shown, all, out)
 	}
 }
+
+func TestBucketInfoTooltip(t *testing.T) {
+	text := "Tickets being worked on. Leaves out anything waiting on a review."
+	prof, err := profile.Parse(strings.Replace(bucketProfile, `name = "Active"`, `name = "Active"`+"\nabout = \""+text+"\"", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(prof, fake.New(0), Options{})
+	send(t, m, tea.WindowSizeMsg{Width: 110, Height: 40})
+	drain(t, m, m.Init())
+
+	m.View()
+	mark := m.comp.GetLayer(layerID(idBucketInfo, 0))
+	if mark == nil {
+		t.Fatal("the bucket with about has no info mark")
+	}
+	if m.comp.GetLayer(layerID(idBucketInfo, 1)) != nil {
+		t.Error("a bucket with no about has an info mark")
+	}
+	// The mark sits at the right end, just left of where a pager goes.
+	if want := 110 - moreWidth - len(infoGlyph); mark.GetX() != want {
+		t.Errorf("info mark at x %d, want %d", mark.GetX(), want)
+	}
+	if strings.Contains(screen(m), "waiting on") {
+		t.Fatal("the tooltip shows before the mouse is over the mark")
+	}
+	send(t, m, tea.MouseMotionMsg{X: mark.GetX(), Y: mark.GetY()})
+	if !strings.Contains(screen(m), "waiting on") {
+		t.Fatal("the tooltip does not show with the mouse over the mark")
+	}
+	checkFrames(t, m, "bucket tooltip")
+	send(t, m, tea.WindowSizeMsg{Width: 110, Height: 40})
+	send(t, m, tea.MouseMotionMsg{X: 0, Y: 0})
+	if strings.Contains(screen(m), "waiting on") {
+		t.Error("the tooltip stays after the mouse leaves the mark")
+	}
+}

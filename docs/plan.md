@@ -82,6 +82,9 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   `query` takes its tickets from that query, one page at a time (ten when it names no
   `page_size`), and needs no `values`; this suits a bucket too large to load whole.
   When every bucket of a queue has its own query, the query of the queue is not run.
+  A bucket with `about` has an `(i)` mark at the right end of its heading, left of the
+  page buttons. With the mouse over the mark,
+  a box shows the `about` text: which tickets the bucket holds and which it leaves out.
 - `[ticket]`: main fields and sidebar fields in order; whether comments are shown;
   whether pictures are drawn in the ticket (`pictures`, off unless set).
 - `[fields.<name>]`: platform field ID, type, label. A field with no label is shown

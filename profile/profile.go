@@ -86,6 +86,10 @@ type Bucket struct {
 	// PageSize is how many tickets the bucket shows at once. Zero shows
 	// them all, which a bucket with its own query cannot do.
 	PageSize int `toml:"page_size"`
+	// About says in a sentence or two which tickets the bucket holds and
+	// which it leaves out. The heading of a bucket with About has an info
+	// mark, and the text shows while the mouse is over the mark.
+	About string `toml:"about"`
 }
 
 // OwnQueries reports whether every bucket of the queue has its own query,

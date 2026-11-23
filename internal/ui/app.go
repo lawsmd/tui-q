@@ -39,14 +39,16 @@ const wheelStep = 3
 
 // Layer IDs. An ID with a colon carries an index after it.
 const (
-	idQueueTab   = "queue"
-	idTicketTab  = "tab"
-	idTabClose   = "tabx"
-	idRow        = "row"
-	idRefresh    = "refresh"
-	idStatus     = "status"
-	idOpen       = "open"
-	idCopyLink   = "copylink"
+	idQueueTab  = "queue"
+	idTicketTab = "tab"
+	idTabClose  = "tabx"
+	idRow       = "row"
+	idRefresh   = "refresh"
+	idStatus    = "status"
+	idOpen      = "open"
+	idCopyLink  = "copylink"
+	// idRowLink is the copy-link button at the left end of a table row.
+	idRowLink    = "rowlink"
 	idMore       = "more"
 	idEdge       = "edge"
 	idLeft       = "left"
@@ -74,6 +76,8 @@ const (
 	idJump     = "jump"
 	idPagePrev = "pageprev"
 	idPageNext = "pagenext"
+	// idBucketInfo is the info mark on a bucket heading.
+	idBucketInfo = "bucketinfo"
 	// idFile is the line of an attachment in a ticket.
 	idFile = "file"
 	// idCommentOrder is the control that turns the order of comments round.
@@ -140,6 +144,9 @@ type Model struct {
 	prof   *profile.Profile
 	prov   provider.Provider
 	styles Styles
+	// hover is the ID of the layer the mouse last moved over with no
+	// button down, until the next other mouse event.
+	hover string
 	// prefs are the settings changed from inside the interface.
 	prefs *prefs.Store
 	// actions are the instance's own actions on a ticket.
@@ -693,6 +700,13 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.key(msg)
 
 	case tea.MouseMsg:
+		// The mouse moving with no button down only says what it is over,
+		// which shows the tooltip of a bucket's info mark.
+		if mm, ok := msg.(tea.MouseMotionMsg); ok && mm.Button == tea.MouseNone {
+			m.hover = m.at(mm.X, mm.Y)
+			return m, nil
+		}
+		m.hover = ""
 		if m.ops.Locked() {
 			m.mouse.Cancel()
 			m.drag = nil
@@ -952,6 +966,12 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		}
 	case idMore:
 		m.menuFor(ev)
+	case idRowLink:
+		q := m.queues[m.activeQueue]
+		if n >= 0 && n < len(q.tickets) {
+			t := q.tickets[n]
+			return m.copy(t.URL, "link to "+t.Key)
+		}
 	case idJump:
 		return m.focusJump()
 	case idPagePrev:
@@ -1082,7 +1102,8 @@ func (m *Model) View() tea.View {
 	m.comp = m.compose()
 	v := tea.NewView(m.comp.Render())
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
+	// All motion, so the mouse over an info mark shows its tooltip.
+	v.MouseMode = tea.MouseModeAllMotion
 	// The comment box draws itself again when the window gets the keyboard
 	// back, which is when a terminal most often loses its picture.
 	v.ReportFocus = true

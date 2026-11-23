@@ -129,3 +129,28 @@ func TestNarrowCommentKeepsItsTitleAndDropsTheControl(t *testing.T) {
 		}
 	}
 }
+
+func TestRowLinkButtonCopiesTheLink(t *testing.T) {
+	m := newModel(t, 110, 40)
+	m.View()
+	q := m.queues[m.activeQueue]
+	for i, tk := range q.tickets[:3] {
+		id := layerID(idRowLink, i)
+		layer := m.comp.GetLayer(id)
+		if layer == nil {
+			t.Fatalf("row %d has no copy-link button", i)
+		}
+		x, y := layer.GetX(), layer.GetY()
+		if got := m.comp.Hit(x, y).ID(); got != id {
+			t.Fatalf("cell %d,%d hits %q, want %q", x, y, got, id)
+		}
+		m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+		_, cmd := m.Update(tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
+		if text, ok := clipboard(cmd); !ok || text != tk.URL {
+			t.Errorf("row %d copied %q, want %q", i, text, tk.URL)
+		}
+		if m.activeTab >= 0 {
+			t.Fatal("the button opened the ticket")
+		}
+	}
+}
