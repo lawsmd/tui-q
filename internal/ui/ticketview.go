@@ -35,6 +35,14 @@ const editMark = " ▾"
 // renameMark follows the title of a ticket that can be renamed.
 const renameMark = " ✎"
 
+// copyControl is set into the top border of a comment, at its right end,
+// and copies the comment. minCommentTitle is the cells of title a border
+// must still have room for to be given the control.
+const (
+	copyControl     = " copy "
+	minCommentTitle = 12
+)
+
 // ticketTab is one open ticket.
 type ticketTab struct {
 	t ticket.Ticket
@@ -83,6 +91,9 @@ type ticketTab struct {
 // and file is the attachment's ID. One with neither a name nor a file is
 // the control for the order of the comments.
 //
+// One with copies set is the copy control on the border of a comment, and
+// comment is the place of that comment among the ticket's.
+//
 // One with pic set is no label: it is the rows of blank cells a picture is
 // drawn over, w by h cells from the line down. room is the columns the
 // picture was given to fit in.
@@ -95,6 +106,9 @@ type labelLine struct {
 
 	pic        bool
 	w, h, room int
+
+	copies  bool
+	comment int
 
 	// act marks a line of an instance's section that has actions: line
 	// sline of section sect.
@@ -198,6 +212,8 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 					tab.files = append(tab.files, l.file)
 				}
 				continue
+			case l.copies:
+				id = layerID(idCommentCopy, l.comment)
 			case l.button:
 				id = layerID(idAction, l.action)
 			case l.act:
@@ -447,15 +463,21 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 	}
 	if m.prof.Ticket.Comments && len(tab.t.Comments) > 0 {
 		oldestFirst := m.prefs.CommentsOldestFirst
-		comments := slices.Clone(tab.t.Comments)
-		slices.SortStableFunc(comments, func(a, b ticket.Comment) int {
+		// The comments are drawn in order of age. Each keeps its place
+		// among the ticket's, which is how its copy control names it.
+		order := make([]int, len(tab.t.Comments))
+		for i := range order {
+			order[i] = i
+		}
+		slices.SortStableFunc(order, func(a, b int) int {
+			ca, cb := tab.t.Comments[a].Created, tab.t.Comments[b].Created
 			if oldestFirst {
-				return a.Created.Compare(b.Created)
+				return ca.Compare(cb)
 			}
-			return b.Created.Compare(a.Created)
+			return cb.Compare(ca)
 		})
 
-		heading := fmt.Sprintf("Comments (%d)", len(comments))
+		heading := fmt.Sprintf("Comments (%d)", len(order))
 		// The control for the order sits at the right end of the rule,
 		// when the rule has room for it after the heading.
 		control := " newest first" + editMark + " "
@@ -469,7 +491,8 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 		tab.mainBox = len(lines)
 
 		colours := commenterColours(tab.t.Comments, s.Commenters)
-		for _, c := range comments {
+		for _, n := range order {
+			c := tab.t.Comments[n]
 			author, border := s.CommentAuthor, s.CommentBorder
 			if colour, ok := colours[c.Author]; ok {
 				author, border = author.Foreground(colour), border.Foreground(colour)
@@ -478,6 +501,13 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 				s.Faint.Render(" · "+c.Created.Local().Format("2006-01-02 15:04"))
 			if c.Kind != "" {
 				title += s.Faint.Render(" · ") + s.Label.Render(c.Kind)
+			}
+			// The copy control sits at the right end of the top border,
+			// and the title is cut to leave a cell of border before it. A
+			// border too narrow for both has the title alone.
+			if x := w - lipgloss.Width(copyControl) - 2; x-ruleIndent-2 >= minCommentTitle {
+				title = ansi.Truncate(title, x-ruleIndent-2, "…")
+				labels = append(labels, labelLine{copies: true, comment: n, line: len(lines), x: x, text: s.Label.Render(copyControl)})
 			}
 			// Inside the box the text starts one line down, after the
 			// border and a space, with the margin of the Markdown cut off.

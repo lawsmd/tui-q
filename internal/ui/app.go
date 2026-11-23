@@ -78,6 +78,8 @@ const (
 	idFile = "file"
 	// idCommentOrder is the control that turns the order of comments round.
 	idCommentOrder = "commentorder"
+	// idCommentCopy is the copy control on the border of a comment.
+	idCommentCopy = "commentcopy"
 	// idComment is the line of the comment box, and the two after it are
 	// the buttons on that line.
 	idComment        = "comment"
@@ -994,6 +996,13 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		}
 		if err != nil {
 			m.notice = "The setting is on for now, but saving it failed: " + err.Error()
+		}
+	case idCommentCopy:
+		if m.activeTab >= 0 {
+			if t := m.tabs[m.activeTab].t; n >= 0 && n < len(t.Comments) {
+				c := t.Comments[n]
+				return m.copy(commentText(c), "the comment by "+c.Author)
+			}
 		}
 	case idSection:
 		m.sectionMenu(n, ev.X, ev.Y)

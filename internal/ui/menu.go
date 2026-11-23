@@ -69,6 +69,18 @@ func (m *Model) copy(text, what string) tea.Cmd {
 	return tea.SetClipboard(text)
 }
 
+// commentText is a comment as it is copied: its Markdown, with the name of
+// a file where the comment shows one. The address of the file means
+// nothing outside tq.
+func commentText(c ticket.Comment) string {
+	body := c.Body
+	refs := ticket.Refs(body)
+	for i := len(refs) - 1; i >= 0; i-- {
+		body = body[:refs[i].Start] + refs[i].Name + body[refs[i].End:]
+	}
+	return strings.TrimSpace(body)
+}
+
 // menuLayers draws the menu as a box over everything else, moved as needed
 // to stay inside the pane. The box takes clicks on its border and title;
 // each item is its own layer above it. A menu taller than the pane shows

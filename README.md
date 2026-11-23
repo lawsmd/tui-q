@@ -25,6 +25,9 @@ and it grows while it is written in. `ctrl+s` or `send` on the border
 posts the comment, `esc` gives the keyboard back to the ticket, and what was typed is
 kept as a draft until it is sent or discarded.
 
+Each comment already on the ticket has `copy` at the right end of its top border. A
+click puts the text of that comment on the clipboard as Markdown.
+
 On a platform with more than one kind of comment, the profile can turn on a choice:
 
 ```toml

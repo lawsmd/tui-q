@@ -29,6 +29,9 @@ looks.
   writes once, on save. Azure DevOps searches the project's tags.
 - Comments can be added from the ticket view. Existing comments cannot be edited: the
   ticket model holds no ID for a comment and not the body as the platform stores it.
+- The top border of each comment has `copy` at its right end. A click puts the comment
+  on the clipboard as Markdown, with the name of a file where the comment shows one. A
+  border under 25 cells wide has the title alone.
 - A single click opens a ticket. The context menu opens from a right-click, a
   middle-click, or the menu button on every row and card. The button is there because a
   terminal multiplexer can keep right-clicks for its own menus.
