@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -389,6 +391,7 @@ func (m *Model) loadQueue(i int) tea.Cmd {
 			cmds = append(cmds, m.loadBucket(i, j, q.page(j).page))
 		}
 	}
+	q.pending += len(cmds)
 	return tea.Batch(cmds...)
 }
 
@@ -592,6 +595,13 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.undo = nil
 		}
+		if !m.ops.Busy() {
+			// With nothing running no queue is waiting on a read, whatever
+			// the count says after a read that failed.
+			for _, q := range m.queues {
+				q.pending = 0
+			}
+		}
 		if msg.Err != nil {
 			m.clearLoading()
 			return m, nil
@@ -604,6 +614,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		q := m.queues[msg.index]
 		q.setSource(fromQueue, msg.tickets)
 		q.loading = false
+		q.pending = max(q.pending-1, 0)
 		q.loadedAt = time.Now()
 
 	case bucketLoadedMsg:
@@ -617,6 +628,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		q.setSource(msg.bucket, msg.result.Tickets)
 		q.loading = false
+		q.pending = max(q.pending-1, 0)
 		q.loadedAt = time.Now()
 
 	case ticketLoadedMsg:
@@ -703,11 +715,14 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The mouse moving with no button down only says what it is over,
 		// which shows the tooltip of a bucket's info mark.
 		if mm, ok := msg.(tea.MouseMotionMsg); ok && mm.Button == tea.MouseNone {
-			m.hover = m.at(mm.X, mm.Y)
+			m.hover = ""
+			if !m.refreshing() {
+				m.hover = m.at(mm.X, mm.Y)
+			}
 			return m, nil
 		}
 		m.hover = ""
-		if m.ops.Locked() {
+		if m.blocked() {
 			m.mouse.Cancel()
 			m.drag = nil
 			m.tabDrag = nil
@@ -758,6 +773,18 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// refreshing reports whether the queue on screen is being read again. The
+// view takes no input until it is read, and is drawn grey.
+func (m *Model) refreshing() bool {
+	return m.only == "" && m.activeTab < 0 && m.queues[m.activeQueue].pending > 0
+}
+
+// blocked reports whether input is refused: a write is running, or the
+// queue on screen is being read again.
+func (m *Model) blocked() bool {
+	return m.ops.Locked() || m.refreshing()
+}
+
 // clearLoading drops the loading marks after a failed read, so a failure
 // does not leave a view saying "Loading" for ever.
 func (m *Model) clearLoading() {
@@ -777,7 +804,7 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	if k == "ctrl+c" {
 		return tea.Quit
 	}
-	if m.ops.Locked() {
+	if m.blocked() {
 		return nil
 	}
 	if m.only != "" {
@@ -1097,10 +1124,24 @@ func (m *Model) startDrag(ev hit.Event) {
 	m.drag = &drag{index: n, x: ev.X, y: ev.Y, dx: ev.X - layer.GetX(), dy: ev.Y - layer.GetY()}
 }
 
+// grey draws every row of the frame but the status bar in one grey, with
+// no colours or backgrounds of its own.
+func (m *Model) grey(frame string) string {
+	rows := strings.Split(frame, "\n")
+	for i := range len(rows) - 1 {
+		rows[i] = m.styles.Disabled.Render(ansi.Strip(rows[i]))
+	}
+	return strings.Join(rows, "\n")
+}
+
 // View draws the frame and keeps it for hit testing.
 func (m *Model) View() tea.View {
 	m.comp = m.compose()
-	v := tea.NewView(m.comp.Render())
+	frame := m.comp.Render()
+	if m.refreshing() {
+		frame = m.grey(frame)
+	}
+	v := tea.NewView(frame)
 	v.AltScreen = true
 	// All motion, so the mouse over an info mark shows its tooltip.
 	v.MouseMode = tea.MouseModeAllMotion

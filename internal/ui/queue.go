@@ -47,8 +47,11 @@ type queue struct {
 	pages []bucketPage
 	// infoAt is where the last frame drew the info mark of each bucket
 	// that has one, by the index of the bucket.
-	infoAt   map[int][2]int
-	loading  bool
+	infoAt  map[int][2]int
+	loading bool
+	// pending is how many reads started by loadQueue have not come back.
+	// The queue view takes no input and is drawn grey until it is zero.
+	pending  int
 	loadedAt time.Time
 	// offset is the index of the first ticket drawn in a table.
 	offset int

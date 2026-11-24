@@ -119,6 +119,9 @@ type Styles struct {
 	Status      lipgloss.Style
 	StatusBusy  lipgloss.Style
 	StatusError lipgloss.Style
+	// Disabled is every row above the status bar while the queue on screen
+	// is read again and takes no input.
+	Disabled lipgloss.Style
 }
 
 // composerBack is the stock colour of the comment box: a grey that stands
@@ -236,6 +239,7 @@ func DefaultStyles() Styles {
 		Status:      lipgloss.NewStyle().Background(bar).Foreground(dim),
 		StatusBusy:  lipgloss.NewStyle().Background(bar).Foreground(warn),
 		StatusError: lipgloss.NewStyle().Background(bar).Foreground(bad),
+		Disabled:    lipgloss.NewStyle().Foreground(dim),
 	}
 }
 

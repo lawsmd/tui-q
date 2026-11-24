@@ -113,6 +113,51 @@ func TestQueueLoadsAndDraws(t *testing.T) {
 	}
 }
 
+func TestRefreshGreysQueueAndRefusesInput(t *testing.T) {
+	m := newModel(t, 110, 30)
+	m.View()
+	button := m.comp.GetLayer(idRefresh)
+	x, y := button.GetX(), button.GetY()
+	_, cmd := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	_, up := m.Update(tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
+	if !m.refreshing() {
+		t.Fatal("the queue is not marked as refreshing after a click on refresh")
+	}
+
+	rows := strings.Split(m.View().Content, "\n")
+	grey := m.styles.Disabled.Render("x")
+	greyStart := grey[:strings.Index(grey, "x")]
+	for i, row := range rows[:len(rows)-1] {
+		if row != "" && strings.Count(row, "\x1b[") > 2 {
+			t.Fatalf("row %d keeps colours of its own: %q", i, row)
+		}
+		if strings.TrimSpace(ansi.Strip(row)) != "" && !strings.HasPrefix(row, greyStart) {
+			t.Fatalf("row %d is not grey: %q", i, row)
+		}
+	}
+	if status := rows[len(rows)-1]; !strings.Contains(status, "Loading") || strings.HasPrefix(status, greyStart) {
+		t.Errorf("status bar is greyed or does not say it is loading: %q", status)
+	}
+
+	m.View()
+	row := m.comp.GetLayer(layerID(idRow, 1))
+	send(t, m, tea.MouseClickMsg{X: row.GetX(), Y: row.GetY(), Button: tea.MouseLeft})
+	send(t, m, tea.MouseReleaseMsg{X: row.GetX(), Y: row.GetY(), Button: tea.MouseLeft})
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
+	if len(m.tabs) != 0 || m.activeQueue != 0 {
+		t.Fatalf("input reached the queue while it refreshed: tabs=%d, queue=%d", len(m.tabs), m.activeQueue)
+	}
+
+	drain(t, m, tea.Batch(cmd, up))
+	if m.refreshing() {
+		t.Fatal("the queue is still marked as refreshing after it loaded")
+	}
+	clickLayer(t, m, layerID(idRow, 1))
+	if len(m.tabs) != 1 {
+		t.Error("a click on a row after the refresh did not open the ticket")
+	}
+}
+
 func TestClickRowOpensTicketTab(t *testing.T) {
 	m := newModel(t, 110, 30)
 	clickLayer(t, m, layerID(idRow, 1))
