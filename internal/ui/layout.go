@@ -315,9 +315,6 @@ func (m *Model) statusBar(w int) *lipgloss.Layer {
 		if step := cur.Step(); step != "" {
 			left += ": " + step
 		}
-		if m.blocked() {
-			left += " (input locked)"
-		}
 		if others := m.ops.Count() - 1; others > 0 {
 			left += fmt.Sprintf("  +%d more", others)
 		}

@@ -559,8 +559,8 @@ func TestWriteLocksInput(t *testing.T) {
 	m.View()
 	// Start a write and leave it unfinished.
 	m.start("Moving DEMO-101", ops.Write, func(context.Context) (tea.Msg, error) { return nil, nil })
-	if !strings.Contains(screen(m), "input locked") {
-		t.Error("status bar does not say input is locked")
+	if !m.blocked() || !greyed(m) {
+		t.Error("input is not locked, or the frame is not grey, during a write")
 	}
 	row := m.comp.GetLayer(layerID(idRow, 0))
 	send(t, m, tea.MouseClickMsg{X: row.GetX(), Y: row.GetY(), Button: tea.MouseLeft})

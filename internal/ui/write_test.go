@@ -441,7 +441,7 @@ func TestStatusBarNamesTheRequestAWriteIsOn(t *testing.T) {
 	held := &heldProvider{Provider: m.prov, reached: make(chan struct{}), release: make(chan struct{})}
 	m.prov = held
 	cmd := m.assign(m.queues[0].tickets[0], ticket.User{})
-	if out := screen(m); !strings.Contains(out, "Unassigning DEMO-101 (input locked)") {
+	if out := screen(m); !strings.Contains(out, "Unassigning DEMO-101") {
 		t.Fatalf("status bar when the write starts:\n%s", out)
 	}
 	done := make(chan struct{})
@@ -450,7 +450,7 @@ func TestStatusBarNamesTheRequestAWriteIsOn(t *testing.T) {
 		drain(t, m, cmd)
 	}()
 	<-held.reached
-	if out := screen(m); !strings.Contains(out, "Unassigning DEMO-101: reading it back (input locked)") {
+	if out := screen(m); !strings.Contains(out, "Unassigning DEMO-101: reading it back") {
 		t.Errorf("status bar while the ticket is read back:\n%s", out)
 	}
 	close(held.release)

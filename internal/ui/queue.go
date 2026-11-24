@@ -29,7 +29,9 @@ const moreGlyph = "⋮"
 
 // linkGlyph is drawn on the button at the left end of a table row that
 // copies the ticket's link, and linkWidth is the room it takes before the
-// first column.
+// first column. Terminals draw the glyph across two cells while Lip Gloss
+// counts one, so the button takes the cell after it too, for its colours to
+// cover the whole glyph when the mouse is over it.
 const (
 	linkGlyph = "⧉"
 	linkWidth = 2
@@ -364,7 +366,7 @@ func (q *queue) tableLayers(m *Model, a area) []*lipgloss.Layer {
 			lipgloss.NewLayer(more).ID(layerID(idMore, index)).X(a.x+a.w-moreWidth).Y(y).Z(zButton),
 		)
 		if t.URL != "" {
-			link := style.Inherit(s.More).Render(linkGlyph)
+			link := style.Inherit(s.More).Render(linkGlyph + " ")
 			layers = append(layers, lipgloss.NewLayer(link).ID(layerID(idRowLink, index)).X(a.x+1).Y(y).Z(zButton))
 		}
 	}

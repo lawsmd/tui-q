@@ -137,7 +137,7 @@ func TestStatusBarShowsTheStepOfARunningAction(t *testing.T) {
 		drain(t, m, cmd)
 	}()
 	<-step
-	if out := screen(m); !strings.Contains(out, "copy: DEMO-101: file 2 of 3 (input locked)") {
+	if out := screen(m); !strings.Contains(out, "copy: DEMO-101: file 2 of 3") {
 		t.Errorf("status bar while the action runs:\n%s", out)
 	}
 	close(finish)

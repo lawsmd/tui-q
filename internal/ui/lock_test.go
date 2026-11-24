@@ -43,7 +43,7 @@ func TestOpeningATicketLocksAndGreysUntilItLoads(t *testing.T) {
 		t.Fatalf("blocked=%v greyed=%v while the ticket loads, want both", m.blocked(), greyed(m))
 	}
 	rows := strings.Split(screen(m), "\n")
-	if status := rows[len(rows)-1]; !strings.Contains(status, "Loading DEMO-101 (input locked)") {
+	if status := rows[len(rows)-1]; !strings.Contains(status, "Loading DEMO-101") {
 		t.Fatalf("status bar = %q", status)
 	}
 	// Esc would go back to the queue.
@@ -68,8 +68,8 @@ func TestAReadInTheBackgroundLeavesInputFree(t *testing.T) {
 	if m.blocked() || greyed(m) {
 		t.Fatalf("blocked=%v greyed=%v during a read in the background, want neither", m.blocked(), greyed(m))
 	}
-	if out := screen(m); !strings.Contains(out, "Reading the notes") || strings.Contains(out, "input locked") {
-		t.Fatalf("the status bar does not name the read, or says input is locked:\n%s", out)
+	if out := screen(m); !strings.Contains(out, "Reading the notes") {
+		t.Fatalf("the status bar does not name the read:\n%s", out)
 	}
 	clickLayer(t, m, layerID(idQueueTab, 1))
 	if m.activeQueue != 1 {
