@@ -239,7 +239,7 @@ func checkBox(t *testing.T, m *Model, b *fakeBox, w, h int, what string) boxPlac
 		return p
 	}
 	r := b.rect
-	if b.covered || r != p.rect || r.x < 0 || r.x+r.w > w || r.y < 2 || r.y+r.h > h-1 {
+	if b.covered || r != p.rect || r.x < 0 || r.x+r.w > w || r.y < 2 || r.y+r.h > h-statusRows {
 		t.Fatalf("pane %dx%d %s: covered=%v box at %+v, want %+v", w, h, what, b.covered, r, p.rect)
 	}
 	for y := r.y; y < r.y+r.h; y++ {
@@ -256,7 +256,7 @@ func checkBox(t *testing.T, m *Model, b *fakeBox, w, h int, what string) boxPlac
 	if p.line.h > 0 && (r.y != p.line.y+1 || r.x != p.line.x+1 || r.w != p.line.w-2) {
 		t.Fatalf("pane %dx%d %s: editor at %+v is not inside the border at %+v", w, h, what, r, p.line)
 	}
-	if r.h == p.rows && r.y+r.h < h-1 && p.line.h > 0 {
+	if r.h == p.rows && r.y+r.h < h-statusRows && p.line.h > 0 {
 		if row := []rune(lines[r.y+r.h]); len(row) <= r.x+r.w || row[r.x-1] != '╰' || row[r.x+r.w] != '╯' {
 			t.Fatalf("pane %dx%d %s: row %d is not the border under the box: %q", w, h, what, r.y+r.h, lines[r.y+r.h])
 		}
@@ -470,7 +470,7 @@ func TestCommentBoxGetsUnknownMessagesAndIsCoveredByPopups(t *testing.T) {
 
 func TestLeavingTheTicketKeepsTheDraft(t *testing.T) {
 	dir := t.TempDir()
-	m, eds := newCommenting(t, 110, 30, Options{Drafts: drafts.Open(dir)})
+	m, eds := newCommenting(t, 110, 31, Options{Drafts: drafts.Open(dir)})
 	b := openBox(t, m, eds)
 	id := m.tabs[0].t.ID
 
@@ -557,7 +557,7 @@ func TestMentionsOfferPeopleMentionedBeforeWithoutASearch(t *testing.T) {
 }
 
 func TestSendingACommentKeepsThePeopleItMentions(t *testing.T) {
-	m, eds := newCommenting(t, 110, 30, Options{})
+	m, eds := newCommenting(t, 110, 31, Options{})
 	b := openBox(t, m, eds)
 	b.text = "over to [@Sam Sample](mention:u%3A2)"
 	send(t, m, editor.Changed{})
@@ -583,7 +583,7 @@ func TestSendingACommentKeepsThePeopleItMentions(t *testing.T) {
 }
 
 func TestSendingAComment(t *testing.T) {
-	m, eds := newCommenting(t, 110, 30, Options{})
+	m, eds := newCommenting(t, 110, 31, Options{})
 	b := openBox(t, m, eds)
 	id := m.tabs[0].t.ID
 	before := len(stored(t, m, id).Comments)
@@ -695,7 +695,7 @@ func TestOneTicketHasACommentBox(t *testing.T) {
 	}
 	eds := &editors{}
 	m := New(prof, fake.New(0), Options{Ticket: "DEMO-104", OpenEditor: eds.open})
-	send(t, m, tea.WindowSizeMsg{Width: 110, Height: 30})
+	send(t, m, tea.WindowSizeMsg{Width: 110, Height: 31})
 	drain(t, m, m.Init())
 	b := eds.box(t)
 	if b.rect != inside(m) || b.rect.h == 0 {

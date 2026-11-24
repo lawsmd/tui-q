@@ -88,7 +88,7 @@ func commentText(c ticket.Comment) string {
 func (m *Model) menuLayers() []*lipgloss.Layer {
 	s := m.styles
 	mn := m.menu
-	visible := clamp(m.h-3, 1, len(mn.items))
+	visible := clamp(m.floor()-3, 1, len(mn.items))
 	mn.offset = clamp(mn.offset, 0, len(mn.items)-visible)
 	title := mn.title
 	if visible < len(mn.items) {
@@ -108,7 +108,7 @@ func (m *Model) menuLayers() []*lipgloss.Layer {
 	rows := box(lines, w, s.MenuBorder)
 
 	x := clamp(mn.x, 0, m.w-w)
-	y := clamp(mn.y, 0, m.h-len(rows))
+	y := clamp(mn.y, 0, m.floor()-len(rows))
 	layers := []*lipgloss.Layer{lipgloss.NewLayer(strings.Join(rows, "\n")).ID(idMenu).X(x).Y(y).Z(zMenu)}
 	for i := 0; i < visible; i++ {
 		n := mn.offset + i

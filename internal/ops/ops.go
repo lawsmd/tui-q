@@ -127,6 +127,9 @@ func (r *Runner) Finish(d DoneMsg) Entry {
 // Busy reports whether any operation is running.
 func (r *Runner) Busy() bool { return len(r.active) > 0 }
 
+// Count is the number of operations running.
+func (r *Runner) Count() int { return len(r.active) }
+
 // Locked reports whether a write is running, which locks input.
 func (r *Runner) Locked() bool {
 	for _, e := range r.active {

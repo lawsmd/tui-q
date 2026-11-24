@@ -127,7 +127,7 @@ func TestRefreshGreysQueueAndRefusesInput(t *testing.T) {
 	rows := strings.Split(m.View().Content, "\n")
 	grey := m.styles.Disabled.Render("x")
 	greyStart := grey[:strings.Index(grey, "x")]
-	for i, row := range rows[:len(rows)-1] {
+	for i, row := range rows[:len(rows)-statusRows] {
 		if row != "" && strings.Count(row, "\x1b[") > 2 {
 			t.Fatalf("row %d keeps colours of its own: %q", i, row)
 		}
@@ -202,7 +202,7 @@ func TestSwitchQueueTab(t *testing.T) {
 }
 
 func TestWheelScrollsAndClamps(t *testing.T) {
-	m := newModel(t, 110, 11) // 6 table rows for 12 tickets
+	m := newModel(t, 110, 12) // 6 table rows for 12 tickets
 	clickLayer(t, m, layerID(idQueueTab, 1))
 	for i := 0; i < 10; i++ {
 		send(t, m, tea.MouseWheelMsg{X: 5, Y: 5, Button: tea.MouseWheelDown})
@@ -562,5 +562,39 @@ func TestWriteLocksInput(t *testing.T) {
 	send(t, m, tea.MouseReleaseMsg{X: row.GetX(), Y: row.GetY(), Button: tea.MouseLeft})
 	if len(m.tabs) != 0 {
 		t.Fatal("a click got through while a write was running")
+	}
+}
+
+func TestStatusBarHasARuleInItsColour(t *testing.T) {
+	m := newModel(t, 110, 30)
+	rule := func() string {
+		rows := strings.Split(m.View().Content, "\n")
+		return rows[len(rows)-statusRows]
+	}
+	line := strings.Repeat("─", 110)
+	if got := rule(); got != m.styles.StatusRule.Render(line) {
+		t.Fatalf("idle rule = %q", got)
+	}
+	m.start("Loading DEMO-101", false, func(context.Context) (tea.Msg, error) { return nil, nil })
+	m.start("Loading DEMO-102", false, func(context.Context) (tea.Msg, error) { return nil, nil })
+	if got := rule(); got != m.styles.StatusRuleBusy.Render(line) {
+		t.Fatalf("rule while an operation runs = %q", got)
+	}
+	if !strings.Contains(screen(m), "Loading DEMO-101  +1 more") {
+		t.Fatalf("the bar does not count the other operation:\n%s", screen(m))
+	}
+}
+
+func TestMenuStaysAboveTheStatusBar(t *testing.T) {
+	m := newModel(t, 60, 12)
+	var items []menuItem
+	for i := 0; i < 30; i++ {
+		items = append(items, menuItem{label: "option", run: func() tea.Cmd { return nil }})
+	}
+	m.showMenu("Pick", 5, 11, items)
+	m.View()
+	box := m.comp.GetLayer(idMenu)
+	if bottom := box.GetY() + box.Height(); bottom > m.floor() {
+		t.Fatalf("the menu ends on row %d, over the status bar at row %d", bottom, m.floor())
 	}
 }

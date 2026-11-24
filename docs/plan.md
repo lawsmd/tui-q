@@ -97,7 +97,7 @@ and `ToTicket`, so an instance can build a queue of its own from them.
 
 ## Interface
 
-- Top row: queue tabs. Second row: open tickets. Last row: status bar. A blank line follows the tab rows. A profile with
+- Top row: queue tabs. Second row: open tickets. Last two rows: a rule, then the status bar. Menus, forms and tooltips stay above the rule. A blank line follows the tab rows. A profile with
   one queue has one tab row, with the open tickets after the queue.
 - The top row has a jump box left of the gear. A click on it or the `/` key gives it
   the keyboard, and it widens to hold a link. `enter` opens the ticket named by a

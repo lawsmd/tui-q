@@ -119,6 +119,11 @@ type Styles struct {
 	Status      lipgloss.Style
 	StatusBusy  lipgloss.Style
 	StatusError lipgloss.Style
+	// StatusRule is the rule over the status bar, in the colour of the line
+	// under it: idle, while an operation runs, and after a failure.
+	StatusRule      lipgloss.Style
+	StatusRuleBusy  lipgloss.Style
+	StatusRuleError lipgloss.Style
 	// Disabled is every row above the status bar while the queue on screen
 	// is read again and takes no input.
 	Disabled lipgloss.Style
@@ -239,7 +244,11 @@ func DefaultStyles() Styles {
 		Status:      lipgloss.NewStyle().Background(bar).Foreground(dim),
 		StatusBusy:  lipgloss.NewStyle().Background(bar).Foreground(warn),
 		StatusError: lipgloss.NewStyle().Background(bar).Foreground(bad),
-		Disabled:    lipgloss.NewStyle().Foreground(dim),
+
+		StatusRule:      lipgloss.NewStyle().Foreground(dim),
+		StatusRuleBusy:  lipgloss.NewStyle().Foreground(warn),
+		StatusRuleError: lipgloss.NewStyle().Foreground(bad),
+		Disabled:        lipgloss.NewStyle().Foreground(dim),
 	}
 }
 

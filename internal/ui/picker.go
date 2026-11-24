@@ -351,7 +351,7 @@ func (m *Model) pickerLayers() []*lipgloss.Layer {
 	case len(choices) == 0:
 		lines = append(lines, s.PickHint.Render(fit("the ticket has every tag that matches", inner)))
 	}
-	rows := min(len(choices), pickRows, max(m.h-12, 1))
+	rows := min(len(choices), pickRows, max(m.floor()-11, 1))
 	p.cursor = clamp(p.cursor, 0, len(choices)-1)
 	if p.cursor < p.offset {
 		p.offset = p.cursor
@@ -386,7 +386,7 @@ func (m *Model) pickerLayers() []*lipgloss.Layer {
 
 	// In a short pane the box loses lines from the top, the tags first, and
 	// keeps the search and the buttons.
-	if room := max(m.h-3, 1); len(lines) > room {
+	if room := max(m.floor()-2, 1); len(lines) > room {
 		cut := len(lines) - room
 		lines = lines[cut:]
 		kept := spots[:0]
@@ -400,7 +400,7 @@ func (m *Model) pickerLayers() []*lipgloss.Layer {
 	boxRows := titledBox(s.MenuTitle.Render(m.label(p.field)+" on "+p.t.Key), lines, w, s.MenuBorder)
 	x := clamp(p.at.x-2, 0, m.w-w)
 	y := p.at.y + 1
-	if bottom := m.h - 1; y+len(boxRows) > bottom {
+	if bottom := m.floor(); y+len(boxRows) > bottom {
 		if p.at.y-len(boxRows) >= 0 {
 			y = p.at.y - len(boxRows)
 		} else {
@@ -408,7 +408,7 @@ func (m *Model) pickerLayers() []*lipgloss.Layer {
 		}
 	}
 	// The label may be from a frame of another size.
-	y = clamp(y, 0, m.h-1-len(boxRows))
+	y = clamp(y, 0, m.floor()-len(boxRows))
 	layers := []*lipgloss.Layer{lipgloss.NewLayer(strings.Join(boxRows, "\n")).ID(idPicker).X(x).Y(y).Z(zMenu)}
 	for _, sp := range spots {
 		layers = append(layers, lipgloss.NewLayer(sp.text).ID(sp.id).X(x+2+sp.x).Y(y+1+sp.y).Z(zMenuItem))

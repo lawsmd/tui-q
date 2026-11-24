@@ -33,7 +33,7 @@ import (
 // Smallest pane the interface draws in.
 const (
 	minWidth  = 40
-	minHeight = 8
+	minHeight = 9
 )
 
 // wheelStep is how many rows one wheel notch scrolls.
@@ -1128,7 +1128,7 @@ func (m *Model) startDrag(ev hit.Event) {
 // no colours or backgrounds of its own.
 func (m *Model) grey(frame string) string {
 	rows := strings.Split(frame, "\n")
-	for i := range len(rows) - 1 {
+	for i := range len(rows) - statusRows {
 		rows[i] = m.styles.Disabled.Render(ansi.Strip(rows[i]))
 	}
 	return strings.Join(rows, "\n")

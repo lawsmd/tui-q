@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 
@@ -57,7 +58,7 @@ func (m *Model) compose() *lipgloss.Compositor {
 		root.AddLayers(m.queues[m.activeQueue].layers(m, content)...)
 	}
 
-	root.AddLayers(m.statusBar(w).Y(h - 1).Z(zItem))
+	root.AddLayers(m.statusBar(w).Y(m.floor()).Z(zItem))
 	root.AddLayers(m.tooltipLayers()...)
 	if m.menu != nil {
 		root.AddLayers(m.menuLayers()...)
@@ -83,7 +84,7 @@ func (m *Model) contentArea() area {
 	if m.only == "" && len(m.queues) != 1 {
 		top = 3
 	}
-	return area{x: 0, y: top, w: m.w, h: m.h - top - 1}
+	return area{x: 0, y: top, w: m.w, h: m.floor() - top}
 }
 
 // onlyKey is the key of the one ticket the program was started to show,
@@ -282,14 +283,23 @@ func (m *Model) cancelTabDrag() {
 	m.tabDrag = nil
 }
 
-// statusBar is the last row. It shows the running operation, or the last
-// failure until it is clicked away, or a summary of what is on screen.
+// statusRows is the height of the status bar: a rule, then its line.
+const statusRows = 2
+
+// floor is the row the status bar starts on. Nothing else is drawn on it
+// or under it, so the bar is in view whatever is open over the rest.
+func (m *Model) floor() int { return m.h - statusRows }
+
+// statusBar is the last rows: a rule across the pane, then a line that
+// shows the running operation, or the last failure until it is clicked
+// away, or a summary of what is on screen. The rule takes the colour of the
+// line under it.
 func (m *Model) statusBar(w int) *lipgloss.Layer {
 	s := m.styles
 	var left string
-	style := s.Status
+	style, rule := s.Status, s.StatusRule
 	if cur, ok := m.ops.Current(); ok {
-		style = s.StatusBusy
+		style, rule = s.StatusBusy, s.StatusRuleBusy
 		left = m.spin.View() + " " + cur.Label
 		if step := cur.Step(); step != "" {
 			left += ": " + step
@@ -297,8 +307,11 @@ func (m *Model) statusBar(w int) *lipgloss.Layer {
 		if cur.Write {
 			left += " (input locked)"
 		}
+		if others := m.ops.Count() - 1; others > 0 {
+			left += fmt.Sprintf("  +%d more", others)
+		}
 	} else if failed, ok := m.ops.Failed(); ok {
-		style = s.StatusError
+		style, rule = s.StatusError, s.StatusRuleError
 		left = "Failed: " + failed.Err.Error() + "  (click to dismiss)"
 	} else if m.notice != "" {
 		left = m.notice
@@ -318,5 +331,5 @@ func (m *Model) statusBar(w int) *lipgloss.Layer {
 		right, rw = "", 0
 	}
 	line := " " + fit(left, w-rw-3) + " " + right + " "
-	return lipgloss.NewLayer(style.Render(fit(line, w))).ID(idStatus)
+	return lipgloss.NewLayer(rule.Render(strings.Repeat("─", w)) + "\n" + style.Render(fit(line, w))).ID(idStatus)
 }

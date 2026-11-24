@@ -199,6 +199,6 @@ func (m *Model) dragLayer() *lipgloss.Layer {
 	}
 	card := strings.Join(q.card(m, q.tickets[d.index], m.styles.CardDrag), "\n")
 	x := clamp(d.x-d.dx, 0, m.w-q.cardW)
-	y := clamp(d.y-d.dy, 0, m.h-q.cardH)
+	y := clamp(d.y-d.dy, 0, m.floor()-q.cardH)
 	return lipgloss.NewLayer(card).X(x).Y(y).Z(zDrag)
 }

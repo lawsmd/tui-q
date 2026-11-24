@@ -171,14 +171,14 @@ func (m *Model) formLayers() []*lipgloss.Layer {
 		lines = append(lines, pad(ansi.Truncate(line, inner, ""), inner))
 	}
 	// The box is cut to the pane, keeping the last line for the button.
-	if room := m.h - 4; len(lines) > room {
+	if room := m.floor() - 4; len(lines) > room {
 		lines = lines[:max(room, 1)]
 	}
 	lines = append(lines, blank(inner, 1), s.Faint.Render(fit("enter saves, esc cancels", inner)))
 	rows := box(lines, w, s.MenuBorder)
 
 	x := max((m.w-w)/2, 0)
-	y := max((m.h-len(rows))/2, 0)
+	y := max((m.floor()-len(rows))/2, 0)
 	button := s.Button.Render("cancel")
 	return []*lipgloss.Layer{
 		lipgloss.NewLayer(strings.Join(rows, "\n")).ID(idForm).X(x).Y(y).Z(zMenu),

@@ -497,9 +497,9 @@ func (m *Model) tooltipLayers() []*lipgloss.Layer {
 	// The box ends where the mark ends, since the mark is at the right.
 	x := clamp(at[0]+lipgloss.Width(infoGlyph)-(inner+4), 0, m.w-(inner+4))
 	y := at[1] + 1
-	if y+len(rows) > m.h-1 {
+	if y+len(rows) > m.floor() {
 		y = at[1] - len(rows)
 	}
-	y = clamp(y, 0, m.h-len(rows))
+	y = clamp(y, 0, m.floor()-len(rows))
 	return []*lipgloss.Layer{lipgloss.NewLayer(strings.Join(rows, "\n")).X(x).Y(y).Z(zMenu)}
 }
