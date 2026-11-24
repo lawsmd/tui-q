@@ -146,9 +146,12 @@ type Model struct {
 	prof   *profile.Profile
 	prov   provider.Provider
 	styles Styles
-	// hover is the ID of the layer the mouse last moved over with no
-	// button down, until the next other mouse event.
-	hover string
+	// hover is the ID of the layer the mouse is over, or "" while that is
+	// not shown: see under. px, py is the cell the mouse was last reported
+	// at, and pointed whether it has been reported at all.
+	hover   string
+	px, py  int
+	pointed bool
 	// prefs are the settings changed from inside the interface.
 	prefs *prefs.Store
 	// actions are the instance's own actions on a ticket.
@@ -731,16 +734,15 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.key(msg)
 
 	case tea.MouseMsg:
-		// The mouse moving with no button down only says what it is over,
-		// which shows the tooltip of a bucket's info mark.
+		// Where the mouse is decides what is drawn as under it: a control
+		// with its colours swapped, or the tooltip of a bucket's info mark.
+		// The mouse moving with no button down says nothing else.
+		at := msg.Mouse()
+		m.px, m.py, m.pointed = at.X, at.Y, true
 		if mm, ok := msg.(tea.MouseMotionMsg); ok && mm.Button == tea.MouseNone {
-			m.hover = ""
-			if !m.blocked() {
-				m.hover = m.at(mm.X, mm.Y)
-			}
+			m.hover = m.under()
 			return m, nil
 		}
-		m.hover = ""
 		if m.blocked() {
 			m.mouse.Cancel()
 			m.drag = nil
@@ -1157,6 +1159,13 @@ func (m *Model) grey(frame string) string {
 // View draws the frame and keeps it for hit testing.
 func (m *Model) View() tea.View {
 	m.comp = m.compose()
+	// What is under the mouse changes without the mouse moving: the view
+	// scrolls, a menu opens, input is refused. The frame is composed again
+	// when it has, so that what is lit is what a click would act on.
+	if hover := m.under(); hover != m.hover {
+		m.hover = hover
+		m.comp = m.compose()
+	}
 	frame := m.comp.Render()
 	if m.blocked() {
 		frame = m.grey(frame)

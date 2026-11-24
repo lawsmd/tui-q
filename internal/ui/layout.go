@@ -37,41 +37,48 @@ func (m *Model) compose() *lipgloss.Compositor {
 		root = lipgloss.NewLayer(lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, notice))
 		return lipgloss.NewCompositor(root)
 	}
+	// Every layer goes in through lit, which swaps the colours of the
+	// control the mouse is over.
+	add := func(layers ...*lipgloss.Layer) {
+		for _, l := range layers {
+			root.AddLayers(m.lit(l))
+		}
+	}
 
 	// A profile with one queue has one tab row: the queue, then the open
 	// tickets. With more queues the tickets have a row of their own.
 	if m.only != "" {
-		root.AddLayers(m.onlyRow(w)...)
+		add(m.onlyRow(w)...)
 	} else if queueTabs, end, limit := m.queueTabRow(w); len(m.queues) == 1 {
-		root.AddLayers(queueTabs...)
-		root.AddLayers(m.ticketTabs(end+tabGap, 0, limit)...)
+		add(queueTabs...)
+		add(m.ticketTabs(end+tabGap, 0, limit)...)
 	} else {
-		root.AddLayers(queueTabs...)
-		root.AddLayers(lipgloss.NewLayer(m.styles.SubTabRow.Render(blank(w, 1))).Y(1).Z(zScenery))
-		root.AddLayers(m.ticketTabs(tabGap, 1, w)...)
+		add(queueTabs...)
+		add(lipgloss.NewLayer(m.styles.SubTabRow.Render(blank(w, 1))).Y(1).Z(zScenery))
+		add(m.ticketTabs(tabGap, 1, w)...)
 	}
 
 	content := m.contentArea()
 	if m.activeTab >= 0 {
-		root.AddLayers(m.tabs[m.activeTab].layers(m, content)...)
+		add(m.tabs[m.activeTab].layers(m, content)...)
 	} else if m.only == "" {
-		root.AddLayers(m.queues[m.activeQueue].layers(m, content)...)
+		add(m.queues[m.activeQueue].layers(m, content)...)
 	}
 
-	root.AddLayers(m.statusBar(w).Y(m.floor()).Z(zItem))
-	root.AddLayers(m.tooltipLayers()...)
+	add(m.statusBar(w).Y(m.floor()).Z(zItem))
+	add(m.tooltipLayers()...)
 	if m.menu != nil {
-		root.AddLayers(m.menuLayers()...)
+		add(m.menuLayers()...)
 	}
 	if m.picker != nil {
-		root.AddLayers(m.pickerLayers()...)
+		add(m.pickerLayers()...)
 	}
 	if m.form != nil {
-		root.AddLayers(m.formLayers()...)
+		add(m.formLayers()...)
 	}
 	if m.drag != nil && m.activeTab < 0 {
 		if l := m.dragLayer(); l != nil {
-			root.AddLayers(l)
+			add(l)
 		}
 	}
 	return lipgloss.NewCompositor(root)

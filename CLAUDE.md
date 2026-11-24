@@ -102,6 +102,11 @@ into this repository.
 - Every frame is a tree of Lip Gloss layers. Anything clickable is a layer with an ID;
   `internal/hit` reports gestures against those IDs. Give every layer an explicit `Z`:
   layers that share a z-order are drawn in no fixed order.
+- A control is drawn with its colours swapped while the mouse is over it. Every layer of
+  the frame passes through `Model.lit` in `compose`, which does this for the kinds of ID
+  listed in `hot` (`internal/ui/hover.go`). A new button, mark or clickable label takes
+  the effect by having its kind added there, and needs nothing where it is drawn. Tabs,
+  rows and cards are left out on purpose.
 - Every provider call goes through `Model.start` in `internal/ui`, never straight from
   `Update`, with a mode from `internal/ops`. `ops.Wait` is a read the user asked for and
   `ops.Write` is a change: both refuse input until they end. `ops.Background` is any
