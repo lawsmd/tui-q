@@ -107,6 +107,16 @@ into this repository.
   listed in `hot` (`internal/ui/hover.go`). A new button, mark or clickable label takes
   the effect by having its kind added there, and needs nothing where it is drawn. Tabs,
   rows and cards are left out on purpose.
+- Bubble Tea calls `View` after every message, and the terminal sends a message for every
+  cell the mouse crosses, so what one message costs is paid many times a second.
+  `compose` gathers the layers and gives them to the root in one `NewLayer` call: Lip
+  Gloss measures every layer of the tree again on each `AddLayers`. `Model.Update` handles
+  a move of the mouse with no button down apart from the rest, and `View` returns the
+  last frame when that move left the same control lit (`still`, `fresh`). Rendered
+  Markdown is kept by text and width (`rendered` in `markdown.go`), and a command that
+  reads a ticket renders it before returning (`Model.prewarm`). The benchmarks in
+  `bench_test.go` time one message in each view: run them before and after a change to
+  how a frame is built.
 - Every provider call goes through `Model.start` in `internal/ui`, never straight from
   `Update`, with a mode from `internal/ops`. `ops.Wait` is a read the user asked for and
   `ops.Write` is a change: both refuse input until they end. `ops.Background` is any
@@ -168,6 +178,7 @@ go run ./cmd/tq DEMO-104   show one ticket, named by a link, key or number, and 
 go run ./cmd/tq check      read every queue once and print it, with no interface
 go run ./cmd/tq order      print the tickets of each queue in working order, for an LLM agent
 go test ./...              tests
+go test ./internal/ui -run '^$' -bench .    what one message costs in each view
 go vet ./...               static checks
 git config core.hooksPath .githooks    turn the hooks on in a new clone
 ```

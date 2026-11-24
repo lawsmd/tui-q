@@ -104,6 +104,7 @@ func (m *Model) loadByID(id string) tea.Cmd {
 			return nil, fmt.Errorf("%s: %w", id, err)
 		}
 		trs, _ := m.prov.Transitions(ctx, t.ID)
+		m.prewarm(t)
 		return jumpedMsg{t: t, trs: trs}, nil
 	})
 }

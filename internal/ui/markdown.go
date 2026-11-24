@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"slices"
 	"strings"
+	"sync"
 
 	"charm.land/glamour/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -40,6 +42,33 @@ func unindent(lines []string, n int) []string {
 // slow next to using it, and a pane has few widths in a session.
 var renderers = map[int]*glamour.TermRenderer{}
 
+// rendered holds Markdown already rendered, by its text and width.
+// Rendering is the slowest thing the interface does, tens of milliseconds
+// for a long ticket, and most of what a ticket holds is the same text the
+// next time it is drawn: after a change is read back, after the comments
+// are turned round, after a refresh. It also lets the command that reads a
+// ticket render it before the interface is asked to (Model.prewarm).
+//
+// renderLock guards rendered and renderers, and is held for a whole render:
+// a glamour renderer cannot be used from two goroutines at once.
+var (
+	renderLock sync.Mutex
+	rendered   = map[renderKey]renderOut{}
+)
+
+// renderLimit is how many texts rendered holds before it is emptied.
+const renderLimit = 2000
+
+type renderKey struct {
+	w    int
+	text string
+}
+
+type renderOut struct {
+	lines []string
+	files []fileLine
+}
+
 // fileLine is a line of rendered Markdown that stands for an attachment:
 // the line, the cell its text starts at, the text unstyled, and the ID of
 // the attachment.
@@ -61,10 +90,28 @@ func (s Styles) markdownLines(text string, w int) []string {
 // for attachments. A reference to an attachment on a line of its own gets
 // a line to itself, naming the file. One inside other text is written as
 // the name of the file, in square brackets.
+//
+// It may be called from any goroutine. The lines are the caller's to change.
 func (s Styles) markdownFiles(text string, w int) ([]string, []fileLine) {
 	if w < 1 {
 		return nil, nil
 	}
+	renderLock.Lock()
+	defer renderLock.Unlock()
+	key := renderKey{w, text}
+	out, ok := rendered[key]
+	if !ok {
+		out.lines, out.files = s.renderMarkdown(text, w)
+		if len(rendered) >= renderLimit {
+			clear(rendered)
+		}
+		rendered[key] = out
+	}
+	return slices.Clone(out.lines), slices.Clone(out.files)
+}
+
+// renderMarkdown does the work of markdownFiles. renderLock is held.
+func (s Styles) renderMarkdown(text string, w int) ([]string, []fileLine) {
 	var (
 		lines []string
 		files []fileLine
@@ -160,7 +207,7 @@ func fileNames(text string) string {
 }
 
 // proseLines renders Markdown with glamour to lines no wider than w. When
-// glamour fails the text is returned unstyled.
+// glamour fails the text is returned unstyled. renderLock is held.
 func proseLines(text string, w int) []string {
 	r, ok := renderers[w]
 	if !ok {

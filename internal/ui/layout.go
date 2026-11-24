@@ -31,17 +31,19 @@ func (m *Model) compose() *lipgloss.Compositor {
 	if w <= 0 || h <= 0 {
 		return lipgloss.NewCompositor(lipgloss.NewLayer(""))
 	}
-	root := lipgloss.NewLayer(blank(w, h))
 	if w < minWidth || h < minHeight {
 		notice := fmt.Sprintf("Pane too small (%dx%d).\nNeeds %dx%d.", w, h, minWidth, minHeight)
-		root = lipgloss.NewLayer(lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, notice))
+		root := lipgloss.NewLayer(lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, notice))
 		return lipgloss.NewCompositor(root)
 	}
 	// Every layer goes in through lit, which swaps the colours of the
-	// control the mouse is over.
+	// control the mouse is over. The layers are gathered and given to the
+	// root in one call: Lip Gloss measures every layer of the tree again
+	// each time layers are added to it.
+	var all []*lipgloss.Layer
 	add := func(layers ...*lipgloss.Layer) {
 		for _, l := range layers {
-			root.AddLayers(m.lit(l))
+			all = append(all, m.lit(l))
 		}
 	}
 
@@ -81,7 +83,7 @@ func (m *Model) compose() *lipgloss.Compositor {
 			add(l)
 		}
 	}
-	return lipgloss.NewCompositor(root)
+	return lipgloss.NewCompositor(lipgloss.NewLayer(blank(w, h), all...))
 }
 
 // contentArea is the part of the pane between the tab rows and the status

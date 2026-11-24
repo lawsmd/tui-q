@@ -538,7 +538,33 @@ func (tab *ticketTab) mainLines(m *Model, w int) ([]string, []labelLine) {
 		}
 	}
 	tab.main, tab.mainLabels, tab.mainWidth, tab.mainLoading = lines, labels, w, tab.loading
+	m.drawnWidth.Store(int64(w))
 	return lines, labels
+}
+
+// prewarm renders the Markdown of a ticket that has just been read, so the
+// interface finds it rendered when it draws the ticket and does not stop to
+// render it. It runs in the command that read the ticket, off the UI
+// goroutine. The width is the one a main column was last drawn at. A
+// ticket drawn at another width is rendered when it is drawn, as before.
+func (m *Model) prewarm(t ticket.Ticket) {
+	w := int(m.drawnWidth.Load())
+	if w < 1 {
+		return
+	}
+	for _, name := range m.prof.Ticket.Main {
+		if name == ticket.FieldTitle {
+			continue
+		}
+		if value := t.Field(name).String(); value != "" {
+			m.styles.markdownFiles(value, w)
+		}
+	}
+	if m.prof.Ticket.Comments {
+		for _, c := range t.Comments {
+			m.styles.markdownFiles(c.Body, w-4+markdownMargin)
+		}
+	}
 }
 
 // commenterColours gives each author in comments a colour from palette. The

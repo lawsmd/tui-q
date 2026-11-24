@@ -7,14 +7,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/charmbracelet/x/ansi"
+	"sync/atomic"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lawsmd/tui-q/ext"
 	"github.com/lawsmd/tui-q/internal/attach"
@@ -236,6 +236,16 @@ type Model struct {
 	// comp is the last frame drawn. Hit tests run against it, since it is
 	// what the user was looking at when they clicked.
 	comp *lipgloss.Compositor
+	// last is the view made from comp. fresh says no message has changed
+	// what is drawn since it was made, and still that the message handled
+	// last was a move of the mouse that left the same control lit. With
+	// both set, last is the frame to show again.
+	last  tea.View
+	fresh bool
+	still bool
+	// drawnWidth is the width a main column of a ticket was last drawn at.
+	// A command that reads a ticket renders its Markdown at this width.
+	drawnWidth atomic.Int64
 }
 
 // Options are the parts of the model that an instance or a machine
@@ -478,6 +488,7 @@ func (m *Model) loadTicket(id, key string) tea.Cmd {
 		}
 		// A ticket with no moves open is still worth showing.
 		trs, _ := m.prov.Transitions(ctx, id)
+		m.prewarm(t)
 		return ticketLoadedMsg{t: t, trs: trs}, nil
 	})
 }
@@ -552,7 +563,24 @@ func (m *Model) openAttachment(t ticket.Ticket, id string) tea.Cmd {
 
 // Update handles one message, then brings the comment box and the pictures
 // in line with what the message changed.
+//
+// The mouse moving with no button down is handled apart. A terminal reports
+// it on every cell the mouse crosses, which makes it the commonest message
+// there is, and all it can change is which control is lit: the comment box
+// and the pictures stay as they are. When the same thing is lit as before,
+// the frame on screen stands and View hands it back without drawing it.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if mm, ok := msg.(tea.MouseMotionMsg); ok && mm.Button == tea.MouseNone {
+		m.px, m.py, m.pointed = mm.X, mm.Y, true
+		hover := m.under()
+		m.still = hover == m.hover
+		if !m.still {
+			m.fresh = false
+		}
+		m.hover = hover
+		return m, nil
+	}
+	m.still, m.fresh = false, false
 	_, cmd := m.update(msg)
 	return m, tea.Batch(cmd, m.syncComposer(), m.syncPictures())
 }
@@ -736,13 +764,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		// Where the mouse is decides what is drawn as under it: a control
 		// with its colours swapped, or the tooltip of a bucket's info mark.
-		// The mouse moving with no button down says nothing else.
 		at := msg.Mouse()
 		m.px, m.py, m.pointed = at.X, at.Y, true
-		if mm, ok := msg.(tea.MouseMotionMsg); ok && mm.Button == tea.MouseNone {
-			m.hover = m.under()
-			return m, nil
-		}
 		if m.blocked() {
 			m.mouse.Cancel()
 			m.drag = nil
@@ -1158,6 +1181,9 @@ func (m *Model) grey(frame string) string {
 
 // View draws the frame and keeps it for hit testing.
 func (m *Model) View() tea.View {
+	if m.still && m.fresh {
+		return m.last
+	}
 	m.comp = m.compose()
 	// What is under the mouse changes without the mouse moving: the view
 	// scrolls, a menu opens, input is refused. The frame is composed again
@@ -1181,5 +1207,6 @@ func (m *Model) View() tea.View {
 	if m.only != "" {
 		v.WindowTitle = m.onlyKey()
 	}
+	m.last, m.fresh = v, true
 	return v
 }

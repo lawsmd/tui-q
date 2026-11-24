@@ -114,12 +114,18 @@ func firstForeground(s string) string {
 	}
 }
 
-// under is the ID of the layer of the last frame composed that the mouse
-// is over, or "" while that is not shown: before the mouse has moved,
-// while input is refused, and while something is being dragged.
+// under is the ID of the control of the last frame composed that the mouse
+// is over. It is "" over anything that is not drawn differently for it, a
+// row or a tab or plain text, so that the mouse crossing those changes
+// nothing. It is "" too while no control is lit: before the mouse has
+// moved, while input is refused, and while something is being dragged.
 func (m *Model) under() string {
 	if !m.pointed || m.comp == nil || m.blocked() || m.mouse.Dragging() {
 		return ""
 	}
-	return m.comp.Hit(m.px, m.py).ID()
+	id := m.comp.Hit(m.px, m.py).ID()
+	if kind, _ := splitID(id); !hot[kind] {
+		return ""
+	}
+	return id
 }

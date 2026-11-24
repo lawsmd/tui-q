@@ -60,6 +60,7 @@ func (m *Model) reloaded(ctx context.Context, report func(string), id, note stri
 		return changedMsg{note: note + ". Reading it back failed."}
 	}
 	trs, _ := m.prov.Transitions(ctx, id)
+	m.prewarm(t)
 	return changedMsg{t: t, trs: trs, note: note}
 }
 
