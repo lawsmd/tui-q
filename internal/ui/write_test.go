@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/lawsmd/tui-q/profile"
+	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/provider/fake"
 	"github.com/lawsmd/tui-q/ticket"
 )
@@ -420,5 +421,41 @@ func TestPencilRenamesTheTicket(t *testing.T) {
 		if !strings.Contains(screen(m), key+"  A new name "+strings.TrimSpace(renameMark)) {
 			t.Fatalf("width %d: tab does not show the new title\n%s", w, screen(m))
 		}
+	}
+}
+
+// heldProvider stops in Get until it is let go, and says when it got there.
+type heldProvider struct {
+	provider.Provider
+	reached, release chan struct{}
+}
+
+func (p *heldProvider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
+	close(p.reached)
+	<-p.release
+	return p.Provider.Get(ctx, id)
+}
+
+func TestStatusBarNamesTheRequestAWriteIsOn(t *testing.T) {
+	m := newModel(t, 110, 30)
+	held := &heldProvider{Provider: m.prov, reached: make(chan struct{}), release: make(chan struct{})}
+	m.prov = held
+	cmd := m.assign(m.queues[0].tickets[0], ticket.User{})
+	if out := screen(m); !strings.Contains(out, "Unassigning DEMO-101 (input locked)") {
+		t.Fatalf("status bar when the write starts:\n%s", out)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		drain(t, m, cmd)
+	}()
+	<-held.reached
+	if out := screen(m); !strings.Contains(out, "Unassigning DEMO-101: reading it back (input locked)") {
+		t.Errorf("status bar while the ticket is read back:\n%s", out)
+	}
+	close(held.release)
+	<-done
+	if m.ops.Busy() {
+		t.Error("still busy after the write ended")
 	}
 }

@@ -60,13 +60,17 @@ func drain(t *testing.T, m *Model, cmd tea.Cmd) {
 		}
 	default:
 		_, next := m.Update(msg)
+		m.settle()
 		drain(t, m, next)
 	}
 }
 
+// send gives the model one message and runs what it leads to. A comment
+// box the message closed has closed by the time it returns.
 func send(t *testing.T, m *Model, msg tea.Msg) {
 	t.Helper()
 	_, cmd := m.Update(msg)
+	m.settle()
 	drain(t, m, cmd)
 }
 

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -662,6 +664,7 @@ func TestCommentBoxOpenedForATicketNoLongerShownIsClosed(t *testing.T) {
 	m, eds := newCommenting(t, 110, 30, Options{})
 	first := openBox(t, m, eds)
 	cmd := m.openComposer(m.tabs[0].t)
+	m.settle()
 	if !first.closed {
 		t.Fatal("the box before it was left open")
 	}
@@ -760,5 +763,70 @@ func TestCommentKindIsPickedOnTheLine(t *testing.T) {
 	}
 	if !strings.Contains(screen(m), "internal") {
 		t.Fatal("the internal note is not marked in the list of comments")
+	}
+}
+
+// slowBox is a box that takes a while to close, as one does under a
+// multiplexer. It closes when gate is closed, and notes that it has.
+type slowBox struct {
+	*fakeBox
+	gate chan struct{}
+	note func(string)
+}
+
+func (b *slowBox) Close() {
+	<-b.gate
+	b.fakeBox.Close()
+	b.note("closed")
+}
+
+func TestClosingTheCommentBoxDoesNotHoldTheInterface(t *testing.T) {
+	var mu sync.Mutex
+	var order []string
+	note := func(what string) {
+		mu.Lock()
+		defer mu.Unlock()
+		order = append(order, what)
+	}
+	seen := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Join(order, ", ")
+	}
+
+	m, eds := newCommenting(t, 110, 31, Options{})
+	openBox(t, m, eds)
+	gate := make(chan struct{})
+	m.composer.box = &slowBox{fakeBox: eds.box(t), gate: gate, note: note}
+	m.openEditor = func(cfg editor.Config) (editor.Box, error) {
+		note("opened")
+		return eds.open(cfg)
+	}
+
+	// Leaving the ticket returns at once, with the box still closing.
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.composer != nil || m.activeTab != -1 {
+		t.Fatalf("composer=%v tab=%d after leaving the ticket", m.composer, m.activeTab)
+	}
+	if got := seen(); got != "" {
+		t.Fatalf("the box closed on the way out: %s", got)
+	}
+
+	// The box of the ticket shown next waits for the first to have closed.
+	m.activeTab = 0
+	_, cmd := m.Update(tea.FocusMsg{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		drain(t, m, cmd)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	if got := seen(); got != "" {
+		t.Fatalf("a box opened while the one before it was closing: %s", got)
+	}
+	close(gate)
+	<-done
+	if got := seen(); got != "closed, opened" {
+		t.Fatalf("order = %q, want the first box closed and then the next opened", got)
 	}
 }

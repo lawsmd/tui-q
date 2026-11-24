@@ -183,7 +183,13 @@ func (m *Model) openComposer(t ticket.Ticket) tea.Cmd {
 		Mentions: mentions(m.prov, m.people, t.ID),
 	}
 	// Opening starts a page in a browser, which takes too long for Update.
+	// It waits for the box before it to have closed: a box that closes
+	// late could wipe the image of this one.
+	gone := m.retired
 	return m.start("Opening the comment box", ops.Background, func(context.Context) (tea.Msg, error) {
+		if gone != nil {
+			<-gone
+		}
 		box, err := open(cfg)
 		return composerOpenedMsg{id: t.ID, box: box, err: err}, nil
 	})
@@ -210,7 +216,7 @@ func (m *Model) composerOpened(msg composerOpenedMsg) tea.Cmd {
 	if c == nil || c.id != msg.id || c.box != nil {
 		// The ticket left the screen while the editor was opening.
 		if msg.box != nil {
-			msg.box.Close()
+			m.retire(msg.box)
 		}
 		return nil
 	}
@@ -281,9 +287,33 @@ func (m *Model) closeComposer(keep bool) {
 		m.saveDraft()
 	}
 	if c.box != nil {
-		c.box.Close()
+		m.retire(c.box)
 	}
 	m.composer = nil
+}
+
+// retire closes a box that is no longer shown, off the UI goroutine.
+// Closing ends a page in a browser, and under a multiplexer it waits before
+// it wipes the image, which is too long for Update. Boxes close one at a
+// time in the order they were retired. m.retired is closed once the last of
+// them has gone.
+func (m *Model) retire(box editor.Box) {
+	before, done := m.retired, make(chan struct{})
+	m.retired = done
+	go func() {
+		if before != nil {
+			<-before
+		}
+		box.Close()
+		close(done)
+	}()
+}
+
+// settle waits until every box that was retired has closed.
+func (m *Model) settle() {
+	if m.retired != nil {
+		<-m.retired
+	}
 }
 
 // discardComment empties the comment box and removes the draft. The box
@@ -312,6 +342,7 @@ func (m *Model) discardComment() {
 // terminal.
 func (m *Model) Close() {
 	m.closeComposer(true)
+	m.settle()
 	closeAll(m.openPictures())
 	m.pics, m.picsOf = nil, ""
 }
@@ -335,15 +366,17 @@ func (m *Model) sendComment() tea.Cmd {
 			what = "Commented on " + key + " (" + k.Name + ")"
 		}
 	}
-	return m.write("Commenting on "+key, nil, func(ctx context.Context) (tea.Msg, error) {
+	return m.write("Commenting on "+key, nil, func(ctx context.Context, report func(string)) (tea.Msg, error) {
+		report("reading the comment from the box")
 		body, err := box.Export(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("%s: the comment could not be read from the box: %w", key, err)
 		}
+		report("sending it")
 		if err := cm.AddComment(ctx, id, kind, body); err != nil {
 			return nil, fmt.Errorf("%s: %w", key, err)
 		}
-		return commentedMsg{id: id, mentioned: mentioned, changed: m.reloaded(ctx, id, what)}, nil
+		return commentedMsg{id: id, mentioned: mentioned, changed: m.reloaded(ctx, report, id, what)}, nil
 	})
 }
 

@@ -201,6 +201,9 @@ type Model struct {
 	// box. noEditor is why the last box did not open, or empty: no other
 	// is opened until the user asks for one.
 	composer *composer
+	// retired is closed once every comment box that left the screen has
+	// closed, or is nil when none has. Boxes close off the UI goroutine.
+	retired chan struct{}
 	// kinds holds, per ticket, the kind of comment picked for it where
 	// that is not the first the provider lists.
 	kinds    map[string]string

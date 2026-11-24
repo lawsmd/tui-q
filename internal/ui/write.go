@@ -43,14 +43,17 @@ type needFieldsMsg struct {
 }
 
 // write runs a provider call that changes a ticket. Input is locked until
-// it ends. undo, when not nil, is called if the write fails.
-func (m *Model) write(label string, undo func(), fn func(ctx context.Context) (tea.Msg, error)) tea.Cmd {
+// it ends. undo, when not nil, is called if the write fails. A write makes
+// several requests, and fn names each to report before making it, so the
+// status bar says which one the user is waiting on.
+func (m *Model) write(label string, undo func(), fn ops.StepFunc) tea.Cmd {
 	m.undo = undo
-	return m.start(label, ops.Write, fn)
+	return m.spinWith(m.ops.StartSteps(label, ops.Write, 0, fn))
 }
 
 // reloaded reads a ticket back after a write and wraps it for the model.
-func (m *Model) reloaded(ctx context.Context, id, note string) tea.Msg {
+func (m *Model) reloaded(ctx context.Context, report func(string), id, note string) tea.Msg {
+	report("reading it back")
 	t, err := m.prov.Get(ctx, id)
 	if err != nil {
 		// The write went through, so this is not a failure of the write.
@@ -65,7 +68,8 @@ func (m *Model) reloaded(ctx context.Context, id, note string) tea.Msg {
 // model is told to ask for them.
 func (m *Model) moveTo(t ticket.Ticket, status string, fields map[string]ticket.Value, undo func()) tea.Cmd {
 	label := fmt.Sprintf("Moving %s to %s", t.Key, status)
-	return m.write(label, undo, func(ctx context.Context) (tea.Msg, error) {
+	return m.write(label, undo, func(ctx context.Context, report func(string)) (tea.Msg, error) {
+		report("reading the moves open to it")
 		trs, err := m.prov.Transitions(ctx, t.ID)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", t.Key, err)
@@ -85,10 +89,11 @@ func (m *Model) moveTo(t ticket.Ticket, status string, fields map[string]ticket.
 				return needFieldsMsg{t: t, tr: *tr}, nil
 			}
 		}
+		report("moving it")
 		if err := m.prov.Transition(ctx, t.ID, *tr, fields); err != nil {
 			return nil, fmt.Errorf("%s: %w", t.Key, err)
 		}
-		return m.reloaded(ctx, t.ID, fmt.Sprintf("Moved %s to %s", t.Key, tr.To)), nil
+		return m.reloaded(ctx, report, t.ID, fmt.Sprintf("Moved %s to %s", t.Key, tr.To)), nil
 	})
 }
 
@@ -118,11 +123,12 @@ func (m *Model) assign(t ticket.Ticket, u ticket.User) tea.Cmd {
 	if u.ID == "" {
 		label, note = "Unassigning "+t.Key, "Unassigned "+t.Key
 	}
-	return m.write(label, nil, func(ctx context.Context) (tea.Msg, error) {
+	return m.write(label, nil, func(ctx context.Context, report func(string)) (tea.Msg, error) {
+		report("writing the change")
 		if err := m.prov.Assign(ctx, t.ID, u.ID); err != nil {
 			return nil, fmt.Errorf("%s: %w", t.Key, err)
 		}
-		return m.reloaded(ctx, t.ID, note), nil
+		return m.reloaded(ctx, report, t.ID, note), nil
 	})
 }
 
@@ -133,9 +139,10 @@ func (m *Model) assignByName(t ticket.Ticket, name string, undo func()) tea.Cmd 
 	if name == "" {
 		label = "Unassigning " + t.Key
 	}
-	return m.write(label, undo, func(ctx context.Context) (tea.Msg, error) {
+	return m.write(label, undo, func(ctx context.Context, report func(string)) (tea.Msg, error) {
 		id := ""
 		if name != "" {
+			report("looking up " + name)
 			users, err := m.prov.Users(ctx, t.ID, name)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", t.Key, err)
@@ -149,24 +156,26 @@ func (m *Model) assignByName(t ticket.Ticket, name string, undo func()) tea.Cmd 
 				return nil, fmt.Errorf("%s: no assignable user is named %s", t.Key, name)
 			}
 		}
+		report("writing the change")
 		if err := m.prov.Assign(ctx, t.ID, id); err != nil {
 			return nil, fmt.Errorf("%s: %w", t.Key, err)
 		}
 		if name == "" {
-			return m.reloaded(ctx, t.ID, "Unassigned "+t.Key), nil
+			return m.reloaded(ctx, report, t.ID, "Unassigned "+t.Key), nil
 		}
-		return m.reloaded(ctx, t.ID, "Assigned "+t.Key+" to "+name), nil
+		return m.reloaded(ctx, report, t.ID, "Assigned "+t.Key+" to "+name), nil
 	})
 }
 
 // setField writes one field of a ticket.
 func (m *Model) setField(t ticket.Ticket, name string, v ticket.Value, undo func()) tea.Cmd {
 	label := m.label(name)
-	return m.write("Setting "+label+" on "+t.Key, undo, func(ctx context.Context) (tea.Msg, error) {
+	return m.write("Setting "+label+" on "+t.Key, undo, func(ctx context.Context, report func(string)) (tea.Msg, error) {
+		report("writing the change")
 		if err := m.prov.UpdateField(ctx, t.ID, name, v); err != nil {
 			return nil, fmt.Errorf("%s: %w", t.Key, err)
 		}
-		return m.reloaded(ctx, t.ID, "Set "+label+" on "+t.Key), nil
+		return m.reloaded(ctx, report, t.ID, "Set "+label+" on "+t.Key), nil
 	})
 }
 

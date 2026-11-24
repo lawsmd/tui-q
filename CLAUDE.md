@@ -83,6 +83,12 @@ into this repository.
   box scrolls with the ticket, so `placeBox` decides where it is for the frame and for
   the editor alike. `TestCommentBoxFitsEveryPane` checks the box across pane sizes and
   scroll positions.
+- A comment box that leaves the screen is closed by `Model.retire`, off the UI goroutine:
+  closing ends a page in a browser and, under a multiplexer, waits before it wipes the
+  image. Boxes close in order, and the command that opens the next box waits for the
+  last to have closed. Never call `Box.Close` from `Update`.
+- A write names each request before making it, through the `report` function that
+  `Model.write` passes, so the status bar says which request the user is waiting on.
 - tui-q gives the comment box cells counted from the top left of its own window and
   knows nothing about the terminal or multiplexer it runs in. Code for one terminal or
   multiplexer (where the pane sits on the screen, the pixel size of a cell, how the

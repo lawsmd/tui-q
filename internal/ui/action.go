@@ -61,7 +61,6 @@ func (m *Model) doAction(a ext.Action, t ticket.Ticket, values map[string]ticket
 		if note == "" {
 			note = label + " finished"
 		}
-		report("reading " + t.Key + " back")
-		return m.reloaded(ctx, t.ID, note), nil
+		return m.reloaded(ctx, report, t.ID, note), nil
 	}))
 }
