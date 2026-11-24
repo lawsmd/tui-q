@@ -54,32 +54,36 @@ func (m *Model) write(label string, undo func(), fn ops.StepFunc) tea.Cmd {
 // reloaded reads a ticket back after a write and wraps it for the model.
 func (m *Model) reloaded(ctx context.Context, report func(string), id, note string) tea.Msg {
 	report("reading it back")
-	t, err := m.prov.Get(ctx, id)
+	t, trs, err := m.read(ctx, id)
 	if err != nil {
 		// The write went through, so this is not a failure of the write.
 		return changedMsg{note: note + ". Reading it back failed."}
 	}
-	trs, _ := m.prov.Transitions(ctx, id)
-	m.prewarm(t)
 	return changedMsg{t: t, trs: trs, note: note}
 }
 
 // moveTo moves a ticket to the status with the given name. When the move
 // asks for values that fields does not hold, nothing is written and the
 // model is told to ask for them.
-func (m *Model) moveTo(t ticket.Ticket, status string, fields map[string]ticket.Value, undo func()) tea.Cmd {
+//
+// known is the move itself when the caller has it, as a menu of moves
+// does: the moves open to the ticket are then not read again first. A card
+// dropped on a lane knows the name of the status alone and passes nil.
+func (m *Model) moveTo(t ticket.Ticket, status string, known *ticket.Transition, fields map[string]ticket.Value, undo func()) tea.Cmd {
 	label := fmt.Sprintf("Moving %s to %s", t.Key, status)
 	return m.write(label, undo, func(ctx context.Context, report func(string)) (tea.Msg, error) {
-		report("reading the moves open to it")
-		trs, err := m.prov.Transitions(ctx, t.ID)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", t.Key, err)
-		}
-		var tr *ticket.Transition
-		for i := range trs {
-			if strings.EqualFold(trs[i].To, status) {
-				tr = &trs[i]
-				break
+		tr := known
+		if tr == nil {
+			report("reading the moves open to it")
+			trs, err := m.prov.Transitions(ctx, t.ID)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", t.Key, err)
+			}
+			for i := range trs {
+				if strings.EqualFold(trs[i].To, status) {
+					tr = &trs[i]
+					break
+				}
 			}
 		}
 		if tr == nil {
@@ -114,7 +118,7 @@ func (m *Model) askFields(t ticket.Ticket, tr ticket.Transition) tea.Cmd {
 	}
 	title := fmt.Sprintf("Move %s to %s", t.Key, tr.To)
 	return m.openForm(title, specs, nil, func(values map[string]ticket.Value) tea.Cmd {
-		return m.moveTo(t, tr.To, values, nil)
+		return m.moveTo(t, tr.To, &tr, values, nil)
 	})
 }
 
@@ -269,7 +273,7 @@ func (m *Model) drop(ev hitEvent) tea.Cmd {
 			return nil
 		}
 		q.tickets[d.index] = withField(old, field, value)
-		return m.moveTo(old, value, nil, undo)
+		return m.moveTo(old, value, nil, nil, undo)
 	case ticket.FieldAssignee:
 		q.tickets[d.index] = withField(old, field, value)
 		return m.assignByName(old, value, undo)
@@ -293,7 +297,7 @@ func (m *Model) moveMenu(t ticket.Ticket, trs []ticket.Transition, x, y int) {
 		if tr.Name != "" && !strings.EqualFold(tr.Name, tr.To) {
 			label += "  (" + tr.Name + ")"
 		}
-		items = append(items, menuItem{label, func() tea.Cmd { return m.moveTo(t, tr.To, nil, nil) }})
+		items = append(items, menuItem{label, func() tea.Cmd { return m.moveTo(t, tr.To, &tr, nil, nil) }})
 	}
 	m.showMenu("Move "+t.Key+" to", x, y, items)
 }

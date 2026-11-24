@@ -279,6 +279,28 @@ func (p *Provider) Transitions(ctx context.Context, id string) ([]ticket.Transit
 	if err != nil {
 		return nil, err
 	}
+	return p.transitions(ctx, typ, current)
+}
+
+// The provider reads a work item and its states together.
+var _ provider.Loader = (*Provider)(nil)
+
+// Load reads a work item and the states open to it. The states of its
+// type are kept after the first read, so the type and state that Get has
+// just read are all it takes, and the second read of the work item that
+// Transitions makes is saved.
+func (p *Provider) Load(ctx context.Context, id string) (ticket.Ticket, []ticket.Transition, error) {
+	t, err := p.Get(ctx, id)
+	if err != nil {
+		return t, nil, err
+	}
+	// A work item whose states cannot be read is still worth showing.
+	trs, _ := p.transitions(ctx, t.Type, t.Status)
+	return t, trs, nil
+}
+
+// transitions lists every state of a type but the current one.
+func (p *Provider) transitions(ctx context.Context, typ, current string) ([]ticket.Transition, error) {
 	states, err := p.states(ctx, typ)
 	if err != nil {
 		return nil, err

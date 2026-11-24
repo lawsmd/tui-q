@@ -164,22 +164,31 @@ func (p *Provider) SearchPage(ctx context.Context, query, cursor string, limit i
 	if cursor != "" {
 		body["nextPageToken"] = cursor
 	}
+	// The count is a request of its own, made while the page is read.
+	var count struct {
+		Count *int `json:"count"`
+	}
+	var countErr error
+	counted := make(chan struct{})
+	go func() {
+		defer close(counted)
+		countErr = p.client.Do(ctx, http.MethodPost, "/rest/api/3/search/approximate-count", map[string]any{"jql": query}, &count)
+	}()
+
 	var resp struct {
 		Issues        []issue `json:"issues"`
 		NextPageToken string  `json:"nextPageToken"`
 	}
-	if err := p.client.Do(ctx, http.MethodPost, "/rest/api/3/search/jql", body, &resp); err != nil {
+	err := p.client.Do(ctx, http.MethodPost, "/rest/api/3/search/jql", body, &resp)
+	<-counted
+	if err != nil {
 		return provider.Page{}, err
 	}
 	page := provider.Page{Next: resp.NextPageToken, Total: -1}
 	for _, is := range resp.Issues {
 		page.Tickets = append(page.Tickets, p.toTicket(is, nil))
 	}
-	var count struct {
-		Count *int `json:"count"`
-	}
-	err := p.client.Do(ctx, http.MethodPost, "/rest/api/3/search/approximate-count", map[string]any{"jql": query}, &count)
-	if err == nil && count.Count != nil {
+	if countErr == nil && count.Count != nil {
 		page.Total = *count.Count
 	}
 	return page, nil
@@ -282,28 +291,72 @@ func (p *Provider) mediaIDs(ctx context.Context, is issue) map[string]ticket.Att
 // Transitions lists the workflow transitions open to an issue, each with
 // the fields of its screen.
 func (p *Provider) Transitions(ctx context.Context, id string) ([]ticket.Transition, error) {
-	var resp struct {
-		Transitions []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-			To   struct {
-				Name string `json:"name"`
-			} `json:"to"`
-			Fields map[string]rawMeta `json:"fields"`
-		} `json:"transitions"`
-	}
-	path := "/rest/api/3/issue/" + url.PathEscape(id) + "/transitions?expand=transitions.fields"
-	if err := p.client.Do(ctx, http.MethodGet, path, nil, &resp); err != nil {
+	list, err := p.readTransitions(ctx, id)
+	if err != nil {
 		return nil, err
 	}
-	out := make([]ticket.Transition, len(resp.Transitions))
-	for i, tr := range resp.Transitions {
+	return p.toTransitions(id, list), nil
+}
+
+// transitionList is Jira's answer to a request for an issue's transitions.
+type transitionList struct {
+	Transitions []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		To   struct {
+			Name string `json:"name"`
+		} `json:"to"`
+		Fields map[string]rawMeta `json:"fields"`
+	} `json:"transitions"`
+}
+
+func (p *Provider) readTransitions(ctx context.Context, id string) (transitionList, error) {
+	var list transitionList
+	path := "/rest/api/3/issue/" + url.PathEscape(id) + "/transitions?expand=transitions.fields"
+	err := p.client.Do(ctx, http.MethodGet, path, nil, &list)
+	return list, err
+}
+
+// toTransitions maps Jira's transitions into the neutral model, and
+// remembers what each screen said about its fields for the issue.
+func (p *Provider) toTransitions(issueID string, list transitionList) []ticket.Transition {
+	out := make([]ticket.Transition, len(list.Transitions))
+	for i, tr := range list.Transitions {
 		out[i] = ticket.Transition{ID: tr.ID, Name: tr.Name, To: tr.To.Name}
 		if len(tr.Fields) > 0 {
-			out[i].Fields = p.specs(id, tr.Fields, false)
+			out[i].Fields = p.specs(issueID, tr.Fields, false)
 		}
 	}
-	return out, nil
+	return out
+}
+
+// The provider reads an issue and its transitions together.
+var _ provider.Loader = (*Provider)(nil)
+
+// Load reads an issue and the transitions open to it, with the two
+// requests made at the same time. What the transition screens say about a
+// field is remembered after what the edit screen says, as it is when
+// Transitions is called after Get.
+func (p *Provider) Load(ctx context.Context, id string) (ticket.Ticket, []ticket.Transition, error) {
+	var (
+		list    transitionList
+		listErr error
+	)
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		list, listErr = p.readTransitions(ctx, id)
+	}()
+	t, err := p.Get(ctx, id)
+	<-read
+	if err != nil {
+		return t, nil, err
+	}
+	if listErr != nil {
+		// An issue whose transitions cannot be read is still worth showing.
+		return t, nil, nil
+	}
+	return t, p.toTransitions(t.ID, list), nil
 }
 
 // Transition moves an issue through one transition.

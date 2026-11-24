@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/lawsmd/tui-q/provider"
@@ -69,9 +70,25 @@ var testFields = map[string]string{
 // sent.
 type server struct {
 	*httptest.Server
+	// mu guards what is recorded: the provider makes some requests at the
+	// same time.
+	mu       sync.Mutex
 	requests []string
 	bodies   []string
 	auth     string
+}
+
+// sent returns the bodies of the requests made to a path, in order.
+func (s *server) sent(path string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for i, r := range s.requests {
+		if strings.HasSuffix(r, " "+path) {
+			out = append(out, s.bodies[i])
+		}
+	}
+	return out
 }
 
 func newServer(t *testing.T) *server {
@@ -79,9 +96,11 @@ func newServer(t *testing.T) *server {
 	s := &server{}
 	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
+		s.mu.Lock()
 		s.requests = append(s.requests, r.Method+" "+r.URL.Path)
 		s.bodies = append(s.bodies, string(body))
 		s.auth = r.Header.Get("Authorization")
+		s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.URL.Path == "/rest/api/3/search/jql":
@@ -177,10 +196,12 @@ func TestSearchPageAsksForOnePage(t *testing.T) {
 	if len(first.Tickets) != 1 || first.Tickets[0].Key != "DEMO-7" || first.Next != "page2" || first.Total != 412 {
 		t.Fatalf("first page: %+v", first)
 	}
-	if !strings.Contains(s.bodies[0], `"maxResults":10`) || strings.Contains(s.bodies[0], "nextPageToken") {
-		t.Errorf("first request: %s", s.bodies[0])
+	// The page and the count are asked for at the same time, in either order.
+	const search, count = "/rest/api/3/search/jql", "/rest/api/3/search/approximate-count"
+	if got := s.sent(search); len(got) != 1 || !strings.Contains(got[0], `"maxResults":10`) || strings.Contains(got[0], "nextPageToken") {
+		t.Errorf("first request: %v", got)
 	}
-	if len(s.requests) != 2 || !strings.HasSuffix(s.requests[1], "/search/approximate-count") {
+	if len(s.requests) != 2 || len(s.sent(count)) != 1 {
 		t.Fatalf("requests: %v", s.requests)
 	}
 	second, err := p.SearchPage(context.Background(), "project = DEMO", first.Next, 10)
@@ -190,8 +211,8 @@ func TestSearchPageAsksForOnePage(t *testing.T) {
 	if len(second.Tickets) != 1 || second.Tickets[0].Key != "DEMO-8" || second.Next != "" {
 		t.Fatalf("second page: %+v", second)
 	}
-	if !strings.Contains(s.bodies[2], `"nextPageToken":"page2"`) {
-		t.Errorf("second request: %s", s.bodies[2])
+	if got := s.sent(search); len(got) != 2 || !strings.Contains(got[1], `"nextPageToken":"page2"`) {
+		t.Errorf("second request: %v", got)
 	}
 }
 
@@ -488,5 +509,33 @@ func TestAddCommentSendsTheKind(t *testing.T) {
 	n := len(s.requests)
 	if err := p.AddComment(context.Background(), "DEMO-7", "secret", doc); err == nil || len(s.requests) != n {
 		t.Fatalf("an unknown kind: err=%v", err)
+	}
+}
+
+func TestLoadReadsTheIssueAndItsTransitionsTogether(t *testing.T) {
+	s := newServer(t)
+	p := newProvider(s)
+	got, trs, err := p.Load(context.Background(), "DEMO-7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := newProvider(s).Get(context.Background(), "DEMO-7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Key != want.Key || got.Title != want.Title || len(got.Editable) != len(want.Editable) {
+		t.Errorf("Load gave %+v, and Get %+v", got, want)
+	}
+	if len(trs) != 2 || trs[0].To != "In progress" || trs[1].To != "Done" || len(trs[1].Fields) != 1 {
+		t.Fatalf("transitions %+v", trs)
+	}
+	// The transition screen is remembered after the edit screen, under the
+	// ID of the issue and not what it was asked for by.
+	if spec, ok := p.spec(context.Background(), got.ID, "resolution"); !ok || !spec.Required {
+		t.Errorf("the resolution field of the transition is remembered as %+v, %v", spec, ok)
+	}
+
+	if _, _, err := p.Load(context.Background(), "MISSING-1"); err == nil {
+		t.Error("an issue that does not exist was loaded")
 	}
 }

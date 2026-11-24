@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"slices"
 	"sort"
 	"sync"
@@ -78,6 +79,27 @@ type Provider interface {
 	// the profile, keyed by the profile's field name.
 	FieldLabels(ctx context.Context) (map[string]string, error)
 }
+
+// Loader is a Provider that reads a ticket and the status changes open to
+// it in one call. A platform implements it when that takes fewer requests,
+// or less time, than Get followed by Transitions: the interface asks for
+// the two together every time it shows a ticket or reads one back.
+type Loader interface {
+	// Load returns what Get and Transitions return for a ticket. Its error
+	// is one Get would give. A ticket whose status changes cannot be read
+	// comes back with none.
+	Load(ctx context.Context, id string) (ticket.Ticket, []ticket.Transition, error)
+}
+
+// Transport is the HTTP transport the platforms' clients share. It is Go's
+// default with more idle connections kept for each host: the interface
+// reads its queues at the same time, and the default keeps two of those
+// connections and closes the rest, to be opened again on the next refresh.
+var Transport = sync.OnceValue(func() http.RoundTripper {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.MaxIdleConnsPerHost = 8
+	return t
+})
 
 // Comment formats: the forms a Commenter can take a comment body in.
 const (

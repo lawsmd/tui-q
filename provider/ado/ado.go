@@ -256,13 +256,45 @@ func (p *Provider) SearchPage(ctx context.Context, query, cursor string, limit i
 	return page, nil
 }
 
-// Get loads one work item with its description and comments.
+// Get loads one work item with its description and comments. The work
+// item and its comments are two requests, made at the same time.
 func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 	if _, err := strconv.Atoi(id); err != nil {
 		return ticket.Ticket{}, fmt.Errorf("ado: %q is not a work item number", id)
 	}
-	var w WorkItem
-	if err := p.client.Do(ctx, http.MethodGet, p.projectPath()+"/_apis/wit/workitems/"+id, nil, &w); err != nil {
+	var comments struct {
+		Comments []struct {
+			Text string `json:"text"`
+			// RenderedText is the HTML Azure DevOps shows, also for a
+			// comment written in Markdown, with each mention as a name.
+			RenderedText string `json:"renderedText"`
+			CreatedBy    struct {
+				DisplayName string `json:"displayName"`
+			} `json:"createdBy"`
+			CreatedDate json.RawMessage `json:"createdDate"`
+		} `json:"comments"`
+	}
+	var commentsErr error
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		path := p.projectPath() + "/_apis/wit/workItems/" + id + "/comments?order=asc&$expand=renderedText&api-version=" + apiVersion + "-preview.4"
+		commentsErr = p.client.Do(ctx, http.MethodGet, path, nil, &comments)
+	}()
+
+	var (
+		w        WorkItem
+		specs    []ticket.FieldSpec
+		specsErr error
+	)
+	err := p.client.Do(ctx, http.MethodGet, p.projectPath()+"/_apis/wit/workitems/"+id, nil, &w)
+	if err == nil {
+		// The fields of a type are read the first time the type is seen,
+		// while the comments are still being read.
+		specs, specsErr = p.editable(ctx, decode(w.Fields[fieldType]).Text)
+	}
+	<-read
+	if err = cmp.Or(err, commentsErr); err != nil {
 		return ticket.Ticket{}, err
 	}
 	t := p.ToTicket(w)
@@ -280,25 +312,8 @@ func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 	t.Body = text(decode(w.Fields[fieldBody]).Text)
 	// The ticket is shown without the fields that can be edited when Azure
 	// DevOps does not describe them.
-	if specs, err := p.editable(ctx, decode(w.Fields[fieldType]).Text); err == nil {
+	if specsErr == nil {
 		t.Editable = specs
-	}
-
-	var comments struct {
-		Comments []struct {
-			Text string `json:"text"`
-			// RenderedText is the HTML Azure DevOps shows, also for a
-			// comment written in Markdown, with each mention as a name.
-			RenderedText string `json:"renderedText"`
-			CreatedBy    struct {
-				DisplayName string `json:"displayName"`
-			} `json:"createdBy"`
-			CreatedDate json.RawMessage `json:"createdDate"`
-		} `json:"comments"`
-	}
-	path := p.projectPath() + "/_apis/wit/workItems/" + id + "/comments?order=asc&$expand=renderedText&api-version=" + apiVersion + "-preview.4"
-	if err := p.client.Do(ctx, http.MethodGet, path, nil, &comments); err != nil {
-		return ticket.Ticket{}, err
 	}
 	for _, c := range comments.Comments {
 		t.Comments = append(t.Comments, ticket.Comment{
@@ -345,25 +360,18 @@ func (p *Provider) Me(ctx context.Context) (ticket.User, error) {
 	return ticket.User{ID: u.Properties.Account.Value, Name: u.ProviderDisplayName}, nil
 }
 
-// FieldLabels gives the platform's name for each field of the profile.
+// FieldLabels gives the platform's name for each field of the profile. The
+// names come from the description of the project's fields, which is read
+// once and kept for the fields that can be edited too.
 func (p *Provider) FieldLabels(ctx context.Context) (map[string]string, error) {
-	var resp struct {
-		Value []struct {
-			Name          string `json:"name"`
-			ReferenceName string `json:"referenceName"`
-		} `json:"value"`
-	}
-	if err := p.client.Do(ctx, http.MethodGet, p.projectPath()+"/_apis/wit/fields", nil, &resp); err != nil {
+	defs, err := p.fieldDefs(ctx)
+	if err != nil {
 		return nil, err
-	}
-	names := map[string]string{}
-	for _, f := range resp.Value {
-		names[f.ReferenceName] = f.Name
 	}
 	out := map[string]string{}
 	for name, id := range p.fields {
-		if label, ok := names[id]; ok {
-			out[name] = label
+		if def, ok := defs[id]; ok {
+			out[name] = def.Name
 		}
 	}
 	return out, nil

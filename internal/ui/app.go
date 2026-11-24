@@ -482,15 +482,35 @@ func (m *Model) openTicket(t ticket.Ticket) tea.Cmd {
 
 func (m *Model) loadTicket(id, key string) tea.Cmd {
 	return m.start("Loading "+key, ops.Wait, func(ctx context.Context) (tea.Msg, error) {
-		t, err := m.prov.Get(ctx, id)
+		t, trs, err := m.read(ctx, id)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", key, err)
 		}
-		// A ticket with no moves open is still worth showing.
-		trs, _ := m.prov.Transitions(ctx, id)
-		m.prewarm(t)
 		return ticketLoadedMsg{t: t, trs: trs}, nil
 	})
+}
+
+// read loads a ticket in full with the moves open to it, and renders its
+// Markdown for the frame that will show it. It runs inside a command. A
+// platform that reads the two together does so (provider.Loader). On any
+// other, the moves are read after the ticket.
+func (m *Model) read(ctx context.Context, id string) (ticket.Ticket, []ticket.Transition, error) {
+	var (
+		t   ticket.Ticket
+		trs []ticket.Transition
+		err error
+	)
+	if l, ok := m.prov.(provider.Loader); ok {
+		t, trs, err = l.Load(ctx, id)
+	} else if t, err = m.prov.Get(ctx, id); err == nil {
+		// A ticket with no moves open is still worth showing.
+		trs, _ = m.prov.Transitions(ctx, t.ID)
+	}
+	if err != nil {
+		return ticket.Ticket{}, nil, err
+	}
+	m.prewarm(t)
+	return t, trs, nil
 }
 
 func (m *Model) closeTab(i int) {

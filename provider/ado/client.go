@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lawsmd/tui-q/provider"
 )
 
 // apiVersion is the REST API version every request names.
@@ -111,7 +113,7 @@ func NewClient(base string, auth Auth) *Client {
 	return &Client{
 		base: strings.TrimRight(base, "/"),
 		auth: auth,
-		http: &http.Client{Timeout: 60 * time.Second},
+		http: &http.Client{Timeout: 60 * time.Second, Transport: provider.Transport()},
 	}
 }
 

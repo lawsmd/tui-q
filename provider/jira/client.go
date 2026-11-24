@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/lawsmd/tui-q/provider"
 )
 
 // Client is a thin HTTP client for one Jira Cloud site. It is exported so an
@@ -30,7 +32,7 @@ func NewClient(base, user, token string) *Client {
 		base:  strings.TrimRight(base, "/"),
 		user:  user,
 		token: token,
-		http:  &http.Client{Timeout: 60 * time.Second},
+		http:  &http.Client{Timeout: 60 * time.Second, Transport: provider.Transport()},
 	}
 }
 

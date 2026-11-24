@@ -459,3 +459,81 @@ func TestStatusBarNamesTheRequestAWriteIsOn(t *testing.T) {
 		t.Error("still busy after the write ended")
 	}
 }
+
+// countingProvider counts the reads of the moves open to a ticket.
+type countingProvider struct {
+	provider.Provider
+	transitions int
+}
+
+func (p *countingProvider) Transitions(ctx context.Context, id string) ([]ticket.Transition, error) {
+	p.transitions++
+	return p.Provider.Transitions(ctx, id)
+}
+
+func TestAMoveFromAMenuDoesNotReadTheMovesAgain(t *testing.T) {
+	m := newModel(t, 130, 40)
+	counting := &countingProvider{Provider: m.prov}
+	m.prov = counting
+	clickLayer(t, m, layerID(idRow, 0))
+	key := m.tabs[0].t.Key
+
+	// The menu is made from the moves read with the ticket. Picking one
+	// writes it and reads the ticket back, moves and all: one read.
+	counting.transitions = 0
+	clickField(t, m, ticket.FieldStatus)
+	clickItem(t, m, "Waiting")
+	if got := stored(t, m, key).Status; got != "Waiting" {
+		t.Fatalf("status = %q, want Waiting", got)
+	}
+	if counting.transitions != 1 {
+		t.Errorf("the moves were read %d times for a move picked from a menu, want 1", counting.transitions)
+	}
+
+	// A card dropped on a lane knows the name of the status alone, so the
+	// moves are looked up before the write and read back after it.
+	send(t, m, esc)
+	clickLayer(t, m, layerID(idQueueTab, 2))
+	q := m.queues[2]
+	card := q.lanes()[0].tickets[0]
+	counting.transitions = 0
+	dragTo(t, m, layerID(idCard, card), layerID(idLane, 2))
+	if counting.transitions != 2 {
+		t.Errorf("the moves were read %d times for a card dropped on a lane, want 2", counting.transitions)
+	}
+}
+
+// loadingProvider reads a ticket and its moves in one call.
+type loadingProvider struct {
+	provider.Provider
+	loads int
+}
+
+func (p *loadingProvider) Load(ctx context.Context, id string) (ticket.Ticket, []ticket.Transition, error) {
+	p.loads++
+	t, err := p.Provider.Get(ctx, id)
+	if err != nil {
+		return t, nil, err
+	}
+	trs, _ := p.Provider.Transitions(ctx, id)
+	return t, trs, nil
+}
+
+func (p *loadingProvider) Get(context.Context, string) (ticket.Ticket, error) {
+	return ticket.Ticket{}, errors.New("Get was called on a provider that loads")
+}
+
+func TestATicketIsReadThroughLoadWhereThePlatformHasIt(t *testing.T) {
+	m := newModel(t, 130, 40)
+	loading := &loadingProvider{Provider: m.prov}
+	m.prov = loading
+	clickLayer(t, m, layerID(idRow, 0))
+	if _, failed := m.ops.Failed(); failed || loading.loads != 1 || len(m.tabs[0].transitions) == 0 {
+		t.Fatalf("opening: failed=%v loads=%d moves=%d", failed, loading.loads, len(m.tabs[0].transitions))
+	}
+	// A write reads the ticket back the same way.
+	drain(t, m, m.assign(m.tabs[0].t, ticket.User{}))
+	if _, failed := m.ops.Failed(); failed || loading.loads != 2 {
+		t.Fatalf("after a write: failed=%v loads=%d", failed, loading.loads)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/lawsmd/tui-q/provider"
@@ -41,7 +42,11 @@ type fakeServer struct {
 	ids     []int
 	items   map[int]string
 	batches [][]int
-	auth    string
+	// mu guards auth and gets: the provider makes some requests at the
+	// same time. gets counts the GET requests made to each path.
+	mu   sync.Mutex
+	auth string
+	gets map[string]int
 	// posted holds the query and text of each comment added.
 	posted []postedComment
 	// patched holds the operations of each change to a work item, and
@@ -56,7 +61,15 @@ type postedComment struct {
 }
 
 func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
 	f.auth = r.Header.Get("Authorization")
+	if r.Method == http.MethodGet {
+		if f.gets == nil {
+			f.gets = map[string]int{}
+		}
+		f.gets[r.URL.Path]++
+	}
+	f.mu.Unlock()
 	if r.URL.Query().Get("api-version") == "" {
 		http.Error(w, `{"message": "no api-version"}`, http.StatusBadRequest)
 		return
@@ -531,5 +544,59 @@ func TestNewRefusesCommentKinds(t *testing.T) {
 	_, err := New(provider.Config{BaseURL: "https://example.com/org", DefaultProject: "DEMO", TokenEnv: "TQ_TEST_ADO_TOKEN", CommentKinds: []string{"internal"}})
 	if err == nil || !strings.Contains(err.Error(), "comment_kinds") {
 		t.Errorf("error %v", err)
+	}
+}
+
+func TestLoadReadsTheWorkItemOnce(t *testing.T) {
+	f := &fakeServer{}
+	p := newTest(t, f)
+	got, trs, err := p.Load(context.Background(), "7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "Export drops rows" || got.Body != "Rows **vanish**." || len(got.Comments) != 2 || len(got.Editable) == 0 {
+		t.Errorf("ticket %+v", got)
+	}
+	if len(trs) != 2 || trs[0].To != "Active" || trs[1].To != "Done" {
+		t.Fatalf("transitions %+v", trs)
+	}
+	const item, comments = "/DEMO/_apis/wit/workitems/7", "/DEMO/_apis/wit/workItems/7/comments"
+	if f.gets[item] != 1 || f.gets[comments] != 1 {
+		t.Errorf("the work item was read %d times and its comments %d, want once each", f.gets[item], f.gets[comments])
+	}
+
+	// A second load reads the work item and its comments and nothing else:
+	// the fields and the states of its type are kept.
+	before := 0
+	for _, n := range f.gets {
+		before += n
+	}
+	if _, _, err := p.Load(context.Background(), "7"); err != nil {
+		t.Fatal(err)
+	}
+	after := 0
+	for _, n := range f.gets {
+		after += n
+	}
+	if after-before != 2 {
+		t.Errorf("a second load made %d requests, want 2: %v", after-before, f.gets)
+	}
+
+	if _, _, err := p.Load(context.Background(), "DEMO-7"); err == nil {
+		t.Error("a key that is no number was loaded")
+	}
+}
+
+func TestFieldLabelsReadTheFieldsOnce(t *testing.T) {
+	f := &fakeServer{}
+	p := newTest(t, f)
+	if _, err := p.FieldLabels(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Get(context.Background(), "7"); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.gets["/DEMO/_apis/wit/fields"]; n != 1 {
+		t.Errorf("the fields of the project were read %d times, want once", n)
 	}
 }

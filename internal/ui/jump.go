@@ -99,12 +99,10 @@ func (m *Model) jumpTo(text string) tea.Cmd {
 // tab once it has loaded.
 func (m *Model) loadByID(id string) tea.Cmd {
 	return m.start("Loading "+id, ops.Wait, func(ctx context.Context) (tea.Msg, error) {
-		t, err := m.prov.Get(ctx, id)
+		t, trs, err := m.read(ctx, id)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", id, err)
 		}
-		trs, _ := m.prov.Transitions(ctx, t.ID)
-		m.prewarm(t)
 		return jumpedMsg{t: t, trs: trs}, nil
 	})
 }

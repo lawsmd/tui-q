@@ -125,6 +125,12 @@ into this repository.
 - While input is refused (`Model.blocked`) the frame is drawn grey above the status bar,
   and the status bar names the request. Check `blocked` in one place for each kind of
   input, at the top of its case in `Model.update`, and not in the handlers under it.
+- The interface reads a ticket and the moves open to it together, through `Model.read`,
+  every time it shows a ticket or reads one back after a write. A platform that can do
+  that in fewer requests than `Get` and then `Transitions`, or at the same time,
+  implements `provider.Loader`. Requests a provider makes at the same time must leave
+  what it remembers in the same state as making them in order.
+- The platforms' HTTP clients use `provider.Transport`.
 - A frame must be exactly the size of the pane. `TestFrameMatchesPaneAtEverySize` checks
   this; extend it when a view is added.
 - An instance action runs through `Model.doAction`, which locks input and shows the
