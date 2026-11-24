@@ -16,7 +16,7 @@ var hot = map[string]bool{
 	idMore: true, idRowLink: true, idBucketInfo: true,
 	idLeft: true, idRight: true, idPagePrev: true, idPageNext: true,
 	idOpen: true, idCopyLink: true, idMove: true, idAssign: true, idAction: true,
-	idField: true, idFile: true, idSection: true, idCommentOrder: true, idCommentCopy: true,
+	idField: true, idFile: true, idSection: true, idLink: true, idCommentOrder: true, idCommentCopy: true,
 	idCommentSend: true, idCommentDiscard: true, idCommentKind: true,
 	idMenuItem: true, idFormCancel: true,
 	idPickTag: true, idPickItem: true, idPickSave: true, idPickCancel: true,

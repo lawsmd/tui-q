@@ -99,6 +99,21 @@ and GIF files are drawn; any other picture keeps its line only.
 slate draws a picture as it draws the comment box, as a Sixel image, so pictures are
 drawn in the terminals where the box works. Elsewhere they keep their lines.
 
+## Linked tickets
+
+A ticket read from Jira carries its links to other issues. The profile can list them in
+the sidebar of the ticket view:
+
+```toml
+[ticket]
+links = true
+```
+
+The Links section shows each relation once, in Jira's words for this ticket's side of it
+("blocks", "is blocked by"), and under it the tickets that have that relation: key and
+status on one line, title on the next. A click on a key opens that ticket in a tab,
+whichever project it is in. A ticket read from Azure DevOps lists no links yet.
+
 ## Try it
 
 ```
@@ -109,6 +124,7 @@ go run ./cmd/tq
 |---|---|
 | Click a queue tab | show that queue |
 | Click a ticket | open it in a ticket tab |
+| Click the key of a linked ticket | open that ticket in a ticket tab |
 | Click `x` on a ticket tab | close it |
 | Mouse wheel | scroll |
 | Click `‹` or `›` on a bucket heading | previous or next page of the bucket |
@@ -136,11 +152,14 @@ you or taken from you. The demo's `Recent` tab is one. `docs/plan.md` gives the 
 tq https://example.com/browse/DEMO-104
 ```
 
-`tq` followed by the link, key or number of a ticket shows that ticket and nothing else.
-It loads no queue, which makes it quick to start on a site whose queues are slow. The
-ticket view is the usual one: the ticket can be moved, assigned, edited and reloaded.
-The queue tabs, the ticket tabs and the `go to ticket` box are left out, and `esc`,
-`tab`, `/` and `ctrl+w` do nothing. `q` quits.
+`tq` followed by the link, key or number of a ticket starts on that ticket. It loads no
+queue, which makes it quick to start on a site whose queues are slow. The ticket view is
+the usual one: the ticket can be moved, assigned, edited and reloaded.
+
+The top row holds a tab for each open ticket and the `go to ticket` box. A linked ticket
+that is clicked, or a ticket named in the box, opens in a tab beside the first. `ctrl+w`
+and the `x` on a tab close a tab while another is open, and the last tab stays. There are
+no queue tabs, and `esc`, `tab` and `shift+tab` do nothing. `q` quits.
 
 ## `tq order`
 
@@ -175,6 +194,44 @@ To tell an agent about the command, put this in the instructions it reads on eve
 > Run `tq order` to see my tickets in the order I mean to work on them. Use it for order
 > only. Read ticket details and make changes through your access to the ticketing
 > platform.
+
+## `tq tabs`
+
+`tq tabs` prints the tickets open in the tabs of every `tq` running on the profile's site,
+without starting the interface. It is for an LLM agent asked about the tickets on screen,
+for example to draft a comment on one ticket from what another says. A ticket is printed
+as its key, status and title, and each ticket it is linked to as the relation, the key and
+the status. The command reads files that the running interfaces keep in the cache
+directory. It asks the platform nothing and needs no credentials.
+
+```
+Tickets open in tq
+Each block is one running tq, named by its process ID, with the tickets open in its
+tabs. A * marks the ticket on screen. Under a ticket are the tickets it is linked to.
+The comment box of the ticket on screen is the editor that "slate ls" lists with the
+same process ID and ticket: read and change its draft with "slate read" and "slate edit".
+This list gives keys, statuses and titles only. Read ticket details through your own
+access to the ticketing platform, not through tq.
+
+tq 50084
+  1. DEMO-104  [In progress]  Webhook retries stop after the first failure
+       blocks      DEMO-102  [Open]
+       blocks      DEMO-107  [Waiting]
+       relates to  DEMO-110  [In progress]
+* 2. DEMO-102  [Open]  Export to CSV drops rows with commas in the name
+       is blocked by  DEMO-104  [In progress]
+```
+
+A ticket's links are listed once `tq` has read the ticket in full, whether or not the
+profile shows them in the sidebar. `slate ls` prints the same process ID beside the
+comment box of the ticket on screen, which is how an agent finds the box to write in.
+
+To tell an agent about the command, put this in the instructions it reads on every run:
+
+> Run `tq tabs` to see the tickets I have open in tq and the links between them. The
+> ticket marked `*` is on screen, and `slate ls` lists its comment box under the same
+> process ID. Read ticket details through your access to the ticketing platform. Write a
+> comment for me with `slate edit`. I send it myself.
 
 ## Instance modules
 

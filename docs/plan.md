@@ -97,7 +97,8 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   the history of each work item changed in that time that the user ever changed or was
   assigned, at most 400 of them, the ones changed most lately.
 - `[ticket]`: main fields and sidebar fields in order; whether comments are shown;
-  whether pictures are drawn in the ticket (`pictures`, off unless set).
+  whether pictures are drawn in the ticket (`pictures`, off unless set); whether the
+  sidebar lists the tickets a ticket is linked to (`links`, off unless set).
 - `[fields.<name>]`: platform field ID, type, label. A field with no label is shown
   under the name the platform gives it.
 - `[fields.<name>.icons]`: a map from a value of the field to the name of an icon in
@@ -254,8 +255,22 @@ interface through `internal/arrange`.
 Also outside the phases: `tq LINK` starts the interface on one ticket, named by a link, a
 key or a number that the provider's `Resolve` reads. `ui.Options.Ticket` carries the ID.
 The model then loads the account, the field names and that ticket, and never a queue. The
-top row holds the ticket's key and the refresh button, and no key or layer leads to a
-queue or to another ticket.
+top row holds a tab for each open ticket, the jump box and the refresh button. A ticket
+opened from a link or from the jump box takes a tab beside the first. The last tab cannot
+be closed, and no key or layer leads to a queue.
+
+Also outside the phases: linked tickets. A provider lists the tickets a ticket is linked
+to in `Ticket.Links` on a full load, each with the relation worded from the ticket's side.
+Jira reads them from `issuelinks`; Azure DevOps lists none yet. With `links = true` in the
+profile's `[ticket]` table the sidebar lists them under a Links rule, and a click on a
+key opens that ticket in a tab.
+
+Also outside the phases: `tq tabs` prints the tickets open in the tabs of every running
+interface for an LLM agent, as key, status and title, with the links of each. The
+interface keeps the list in a file of its own under the cache directory
+(`internal/session`), writes it when a tab changes, and removes it on exit. The command
+prints the process ID of each interface, which slate's listing of open editors carries
+too.
 
 Also outside the phases: a queue with `recent = true` lists the tickets the user acted on
 lately, through `provider.RecentReader`. Azure DevOps and the fake provider implement it.

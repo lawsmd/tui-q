@@ -42,6 +42,7 @@ main = ["title", "body"]
 sidebar = ["status", "type", "assignee", "priority", "labels", "created", "updated"]
 comments = true
 pictures = true
+links = true
 
 [fields.labels]
 type = "list"

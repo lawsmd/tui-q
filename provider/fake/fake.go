@@ -221,6 +221,14 @@ func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 	}
 	out := *t
 	out.Editable = editable()
+	// A link says what the ticket at its other end is now.
+	out.Links = nil
+	for _, l := range linked[t.ID] {
+		if o, err := p.find(l.ID); err == nil {
+			l.Title, l.Status, l.Type, l.URL = o.Title, o.Status, o.Type, o.URL
+		}
+		out.Links = append(out.Links, l)
+	}
 	return out, nil
 }
 

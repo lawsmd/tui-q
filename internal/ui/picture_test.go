@@ -162,9 +162,10 @@ func TestPictureIsCoveredByAMenuAndClosedWithItsTicket(t *testing.T) {
 	if got := p.got[len(p.got)-1]; got != (odd{}) {
 		t.Errorf("the picture was not passed a message of its own: last got %T", got)
 	}
-	m.closeTab(0)
+	// Another ticket takes the screen.
+	drain(t, m, m.jumpTo("DEMO-101"))
 	send(t, m, odd{})
-	if !p.closed || m.pics != nil {
+	if !p.closed || len(m.pics) != 0 {
 		t.Errorf("closed=%v pics=%v after the ticket left the screen", p.closed, m.pics)
 	}
 }

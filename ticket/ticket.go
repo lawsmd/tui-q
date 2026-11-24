@@ -92,9 +92,35 @@ type Ticket struct {
 	// shows. Only a ticket loaded in full has them.
 	Attachments []Attachment
 
+	// Links are the other tickets this one is tied to. Only a ticket loaded
+	// in full has them.
+	Links []Link
+
 	// Editable describes the fields the platform lets the user change on
 	// this ticket. Only a ticket loaded in full has it.
 	Editable []FieldSpec
+}
+
+// Link ties a ticket to another ticket.
+type Link struct {
+	// Relation says what the other ticket is to this one, in the platform's
+	// words and from this ticket's side: "blocks", "is blocked by".
+	Relation string
+
+	// ID, Key, Title, Status, Type and URL are those of the other ticket,
+	// as in Ticket. The platform may leave any but ID and Key empty.
+	ID     string
+	Key    string
+	Title  string
+	Status string
+	Type   string
+	URL    string
+}
+
+// Ticket returns what a link says of the other ticket, as a ticket that
+// has not been loaded in full.
+func (l Link) Ticket() Ticket {
+	return Ticket{ID: l.ID, Key: l.Key, Title: l.Title, Status: l.Status, Type: l.Type, URL: l.URL}
 }
 
 // Spec returns the edit description of a field of this ticket.

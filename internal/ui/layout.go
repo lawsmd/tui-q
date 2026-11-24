@@ -96,8 +96,8 @@ func (m *Model) contentArea() area {
 	return area{x: 0, y: top, w: m.w, h: m.floor() - top}
 }
 
-// onlyKey is the key of the one ticket the program was started to show,
-// or its ID until the ticket has loaded.
+// onlyKey is the key of the ticket on show in a program started on one
+// ticket, or the ID of that ticket until it has loaded.
 func (m *Model) onlyKey() string {
 	if m.activeTab >= 0 && m.tabs[m.activeTab].t.Key != "" {
 		return m.tabs[m.activeTab].t.Key
@@ -105,18 +105,45 @@ func (m *Model) onlyKey() string {
 	return m.only
 }
 
-// onlyRow is the top row of a program started on one ticket: the key of
-// the ticket and a refresh button.
+// onlyRow is the top row of a program started on one ticket: a tab for
+// each open ticket, the jump box and a refresh button. No queue has a tab.
+// Until the first ticket has loaded, its name stands where its tab will be.
 func (m *Model) onlyRow(w int) []*lipgloss.Layer {
 	s := m.styles
 	layers := []*lipgloss.Layer{lipgloss.NewLayer(s.TabRow.Render(blank(w, 1))).Z(zScenery)}
 	button := s.Button.Render("refresh")
 	buttonX := w - lipgloss.Width(button)
 	layers = append(layers, lipgloss.NewLayer(button).ID(idRefresh).X(buttonX).Z(zItem))
-	if key := s.TabActive.Render(m.onlyKey()); lipgloss.Width(key) < buttonX {
-		layers = append(layers, lipgloss.NewLayer(key).Z(zItem))
+
+	// The jump box takes what the tabs leave. It is kept as a button when
+	// they leave nothing, since it is the way to a ticket no link names.
+	waiting := s.TabActive.Render(m.only)
+	need := lipgloss.Width(waiting)
+	if len(m.tabs) > 0 {
+		need = tabGap
+		for _, tab := range m.tabs {
+			need += lipgloss.Width(s.SubTab.Render(tab.t.Key)) + lipgloss.Width(tabCloser) + tabGap
+		}
 	}
-	return layers
+	right := buttonX - 1
+	need = clamp(need, 0, right-lipgloss.Width(s.Button.Render(jumpButton))-1)
+	jump, jumpX := m.jumpLayer(right, need)
+	if jump != nil {
+		layers = append(layers, jump)
+	}
+	if len(m.tabs) == 0 {
+		if lipgloss.Width(waiting) < jumpX {
+			layers = append(layers, lipgloss.NewLayer(waiting).Z(zItem))
+		}
+		return layers
+	}
+	return append(layers, m.ticketTabs(tabGap, 0, jumpX-1)...)
+}
+
+// lastTab reports whether one ticket is open in a program started on one
+// ticket. That tab cannot be closed: no queue is there to show in its place.
+func (m *Model) lastTab() bool {
+	return m.only != "" && len(m.tabs) <= 1
 }
 
 // queueTabRow is the top row: one tab per queue and a refresh button. It
@@ -180,11 +207,13 @@ func (m *Model) queueTabRow(w int) (row []*lipgloss.Layer, end, limit int) {
 // Each tab is a block of its own colour with one cell of the row showing
 // between it and the next. The tab on show takes the accent colour, and a
 // tab being dragged the colour of a carried card. The place of each tab is
-// kept in m.tabSpans for the drag that reorders them.
+// kept in m.tabSpans for the drag that reorders them. A tab that cannot be
+// closed has no mark to close it.
 func (m *Model) ticketTabs(x, y, limit int) []*lipgloss.Layer {
 	s := m.styles
 	var layers []*lipgloss.Layer
 	m.tabSpans = m.tabSpans[:0]
+	closable := !m.lastTab()
 	for i, tab := range m.tabs {
 		style, closeStyle := s.SubTab, s.SubTabClose
 		switch {
@@ -196,23 +225,30 @@ func (m *Model) ticketTabs(x, y, limit int) []*lipgloss.Layer {
 			closeStyle = style.Padding(0)
 		}
 		label := style.Render(tab.t.Key)
-		closer := closeStyle.Render("x ")
+		closer := ""
+		if closable {
+			closer = closeStyle.Render(tabCloser)
+		}
 		lw, cw := lipgloss.Width(label), lipgloss.Width(closer)
 		if x+lw+cw > limit {
 			break
 		}
-		layers = append(layers,
-			lipgloss.NewLayer(label).ID(layerID(idTicketTab, i)).X(x).Y(y).Z(zItem),
-			lipgloss.NewLayer(closer).ID(layerID(idTabClose, i)).X(x+lw).Y(y).Z(zItem),
-		)
+		layers = append(layers, lipgloss.NewLayer(label).ID(layerID(idTicketTab, i)).X(x).Y(y).Z(zItem))
+		if closable {
+			layers = append(layers, lipgloss.NewLayer(closer).ID(layerID(idTabClose, i)).X(x+lw).Y(y).Z(zItem))
+		}
 		m.tabSpans = append(m.tabSpans, span{x: x, w: lw + cw})
 		x += lw + cw + tabGap
 	}
 	return layers
 }
 
-// tabGap is the room between two ticket tabs.
-const tabGap = 1
+// tabGap is the room between two ticket tabs, and tabCloser the mark at
+// the end of a tab that closes it.
+const (
+	tabGap    = 1
+	tabCloser = "x "
+)
 
 // span is the cells a ticket tab takes on its row.
 type span struct{ x, w int }

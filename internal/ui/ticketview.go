@@ -88,8 +88,8 @@ type ticketTab struct {
 // labelLine is something clickable in a column: the label of an editable
 // field, with the line it is drawn on and how far along the line it
 // starts. One with a file is the line of an attachment that can be opened,
-// and file is the attachment's ID. One with neither a name nor a file is
-// the control for the order of the comments.
+// and file is the attachment's ID. One with none of the marks below, and
+// neither a name nor a file, is the control for the order of the comments.
 //
 // One with copies set is the copy control on the border of a comment, and
 // comment is the place of that comment among the ticket's.
@@ -119,6 +119,11 @@ type labelLine struct {
 	// action, drawn in the sidebar.
 	button bool
 	action int
+
+	// link marks the key of a linked ticket: the link at place linked
+	// among the ticket's.
+	link   bool
+	linked int
 }
 
 // set replaces the ticket and drops the rendered cache.
@@ -216,6 +221,8 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 				id = layerID(idCommentCopy, l.comment)
 			case l.button:
 				id = layerID(idAction, l.action)
+			case l.link:
+				id = layerID(idLink, l.linked)
 			case l.act:
 				id = layerID(idSection, len(tab.sectHits))
 				tab.sectHits = append(tab.sectHits, sectHit{l.sect, l.sline})
@@ -591,7 +598,7 @@ func commenterColours(comments []ticket.Comment, palette []color.Color) map[stri
 
 // sidebarLines is the instance's sections, then the profile's sidebar
 // fields under a rule, a label over each value, then the buttons of the
-// actions placed under the fields.
+// actions placed under the fields, then the tickets this one is linked to.
 func (tab *ticketTab) sidebarLines(m *Model, w int) ([]string, []labelLine) {
 	s := m.styles
 	lines, labels := tab.sectionLines(m, w)
@@ -610,7 +617,80 @@ func (tab *ticketTab) sidebarLines(m *Model, w int) ([]string, []labelLine) {
 		}
 		lines = append(lines, "")
 	}
-	return tab.sideButtons(m, ext.DetailsSection, w, lines, labels)
+	lines, labels = tab.sideButtons(m, ext.DetailsSection, w, lines, labels)
+	return tab.linkLines(m, w, lines, labels)
+}
+
+// linksSection is the title of the sidebar section that lists the tickets
+// a ticket is linked to.
+const linksSection = "Links"
+
+// showsLinks reports whether the sidebar lists the tickets this one is
+// linked to: the profile asks for them and the ticket has some.
+func (tab *ticketTab) showsLinks(m *Model) bool {
+	return m.prof.Ticket.Links && len(tab.t.Links) > 0
+}
+
+// relationOf is what a link says the other ticket is to this one, or a
+// word to stand for it on a platform that does not say.
+func relationOf(l ticket.Link) string {
+	if l.Relation == "" {
+		return "linked to"
+	}
+	return l.Relation
+}
+
+// linkGroups gathers the places of a ticket's links by what each link is
+// to the ticket, in the order the platform first gave each relation.
+func linkGroups(links []ticket.Link) [][]int {
+	var groups [][]int
+	at := map[string]int{}
+	for i, l := range links {
+		g, ok := at[relationOf(l)]
+		if !ok {
+			g = len(groups)
+			at[relationOf(l)] = g
+			groups = append(groups, nil)
+		}
+		groups[g] = append(groups[g], i)
+	}
+	return groups
+}
+
+// linkKey is the line of a linked ticket that names it: its key, which
+// can be clicked, and its status after it.
+func (tab *ticketTab) linkKey(m *Model, l ticket.Link, w int) (key, line string) {
+	key = m.styles.CardKey.Render(ansi.Truncate(l.Key, w, "…"))
+	if rest := w - lipgloss.Width(key) - 2; l.Status != "" && rest > 0 {
+		return key, key + "  " + ansi.Truncate(l.Status, rest, "…")
+	}
+	return key, key
+}
+
+// linkLines adds the tickets this one is linked to under a rule of their
+// own: each relation as a label, and under it the tickets that have it,
+// the key and status of each on one line and its title, cut to the width,
+// on the next. A click on a key opens that ticket in a tab.
+func (tab *ticketTab) linkLines(m *Model, w int, lines []string, labels []labelLine) ([]string, []labelLine) {
+	if !tab.showsLinks(m) {
+		return lines, labels
+	}
+	s := m.styles
+	lines = append(lines, s.rule(linksSection, w), "")
+	for _, group := range linkGroups(tab.t.Links) {
+		lines = append(lines, s.Label.Render(fit(relationOf(tab.t.Links[group[0]]), w)))
+		for _, i := range group {
+			l := tab.t.Links[i]
+			key, line := tab.linkKey(m, l, w)
+			labels = append(labels, labelLine{link: true, linked: i, line: len(lines), text: key})
+			lines = append(lines, line)
+			if l.Title != "" {
+				lines = append(lines, s.Faint.Render(fit(l.Title, w)))
+			}
+		}
+		lines = append(lines, "")
+	}
+	return lines, labels
 }
 
 // sideValues is the value of a sidebar field as lines: one per item of a
@@ -673,8 +753,8 @@ func (tab *ticketTab) inSidebar(m *Model, a ext.Action) bool {
 }
 
 // sideWidth is the width of the sidebar beside the main column: that of
-// its widest rule title, label, value, clickable line or button word,
-// between sidebarMinWidth and sidebarMaxWidth. A plain line of an
+// its widest rule title, label, value, clickable line, button word or
+// line of a linked ticket, between sidebarMinWidth and sidebarMaxWidth. A plain line of an
 // instance's section counts by its longest word, since it wraps.
 func (tab *ticketTab) sideWidth(m *Model) int {
 	need := 0
@@ -709,6 +789,16 @@ func (tab *ticketTab) sideWidth(m *Model) int {
 	for _, i := range m.actionsFor(tab.t) {
 		if a := m.actions[i]; tab.inSidebar(m, a) {
 			fits(longestWord(a.Name) + m.styles.Button.GetHorizontalFrameSize())
+		}
+	}
+	if tab.showsLinks(m) {
+		fits(ruleIndent + 2 + lipgloss.Width(linksSection))
+		for _, l := range tab.t.Links {
+			fits(lipgloss.Width(relationOf(l)))
+			fits(lipgloss.Width(l.Title))
+			if l.Status != "" {
+				fits(lipgloss.Width(l.Key) + 2 + lipgloss.Width(l.Status))
+			}
 		}
 	}
 	return clamp(need, sidebarMinWidth, sidebarMaxWidth)

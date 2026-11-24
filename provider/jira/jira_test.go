@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -45,6 +46,14 @@ const issueJSON = `{
     "field_43": [{"value": "North"}, {"value": "South"}],
     "field_44": 3,
     "field_46": {"requestType": {"id": "9", "name": "Report a fault"}, "currentStatus": {"status": "Open"}},
+    "issuelinks": [
+      {"id": "501", "type": {"name": "Blocks", "inward": "is blocked by", "outward": "blocks"},
+       "outwardIssue": {"id": "10009", "key": "DEMO-9",
+         "fields": {"summary": "Monthly report is empty", "status": {"name": "In Progress"}, "issuetype": {"name": "Bug"}}}},
+      {"id": "502", "type": {"name": "Problem/Incident", "inward": "is caused by", "outward": "causes"},
+       "inwardIssue": {"id": "20003", "key": "OTHER-3",
+         "fields": {"summary": "Change the CSV writer", "status": {"name": "Done"}, "issuetype": {"name": "Task"}}}}
+    ],
     "description": {"type": "doc", "version": 1, "content": [
       {"type": "paragraph", "content": [{"type": "text", "text": "Rows vanish."}]}
     ]},
@@ -74,6 +83,7 @@ type server struct {
 	// same time.
 	mu       sync.Mutex
 	requests []string
+	queries  []string
 	bodies   []string
 	auth     string
 }
@@ -98,6 +108,7 @@ func newServer(t *testing.T) *server {
 		body, _ := io.ReadAll(r.Body)
 		s.mu.Lock()
 		s.requests = append(s.requests, r.Method+" "+r.URL.Path)
+		s.queries = append(s.queries, r.URL.Query().Get("fields"))
 		s.bodies = append(s.bodies, string(body))
 		s.auth = r.Header.Get("Authorization")
 		s.mu.Unlock()
@@ -249,6 +260,36 @@ func TestGetMapsFields(t *testing.T) {
 	}
 	if len(got.Comments) != 1 || got.Comments[0].Author != "Alex Example" || got.Comments[0].Body != "**Seen it too.**" {
 		t.Errorf("Comments = %+v", got.Comments)
+	}
+}
+
+func TestGetReadsLinksFromThisIssuesSide(t *testing.T) {
+	s := newServer(t)
+	got, err := newProvider(s).Get(context.Background(), "DEMO-7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.queries) == 0 || !strings.Contains(","+s.queries[0]+",", ",issuelinks,") {
+		t.Errorf("fields asked for = %q, want issuelinks among them", s.queries)
+	}
+	want := []ticket.Link{
+		{Relation: "blocks", ID: "DEMO-9", Key: "DEMO-9", Title: "Monthly report is empty", Status: "In Progress", Type: "Bug", URL: s.URL + "/browse/DEMO-9"},
+		{Relation: "is caused by", ID: "OTHER-3", Key: "OTHER-3", Title: "Change the CSV writer", Status: "Done", Type: "Task", URL: s.URL + "/browse/OTHER-3"},
+	}
+	if !slices.Equal(got.Links, want) {
+		t.Errorf("Links = %+v, want %+v", got.Links, want)
+	}
+}
+
+func TestSearchAsksForNoLinks(t *testing.T) {
+	s := newServer(t)
+	if _, err := newProvider(s).Search(context.Background(), "project = DEMO"); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range s.sent("/rest/api/3/search/jql") {
+		if strings.Contains(body, "issuelinks") {
+			t.Errorf("a search asked for links: %s", body)
+		}
 	}
 }
 

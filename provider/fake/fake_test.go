@@ -54,6 +54,41 @@ func TestTransitionChangesStatus(t *testing.T) {
 	}
 }
 
+func TestLinkFollowsTheTicketAtItsOtherEnd(t *testing.T) {
+	p := New(0)
+	ctx := context.Background()
+	got, err := p.Get(ctx, "DEMO-102")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Links) != 1 {
+		t.Fatalf("Links = %+v, want one", got.Links)
+	}
+	l := got.Links[0]
+	if l.Relation != "is blocked by" || l.Key != "DEMO-104" || l.Status != "In progress" || l.Title == "" || l.URL == "" {
+		t.Errorf("link = %+v", l)
+	}
+	trs, err := p.Transitions(ctx, "DEMO-104")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Transition(ctx, "DEMO-104", trs[0], nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = p.Get(ctx, "DEMO-102"); got.Links[0].Status != trs[0].To {
+		t.Errorf("link status = %q, want %q", got.Links[0].Status, trs[0].To)
+	}
+	all, err := p.Search(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range all {
+		if len(s.Links) > 0 {
+			t.Errorf("a search returned the links of %s", s.Key)
+		}
+	}
+}
+
 func TestRegistered(t *testing.T) {
 	if _, err := provider.New(provider.Config{Kind: Kind}); err != nil {
 		t.Fatal(err)

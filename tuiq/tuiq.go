@@ -16,6 +16,7 @@ import (
 	"github.com/lawsmd/tui-q/internal/editor"
 	"github.com/lawsmd/tui-q/internal/people"
 	"github.com/lawsmd/tui-q/internal/prefs"
+	"github.com/lawsmd/tui-q/internal/session"
 	"github.com/lawsmd/tui-q/internal/ui"
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/provider"
@@ -57,18 +58,19 @@ func WithSections(sections ...ext.Section) Option {
 // usage is printed by "tq help" and with the error for an unknown command.
 const usage = `usage:
   tq                                  start the interface
-  tq LINK                             show one ticket, named by a link, key or number
+  tq LINK                             start on one ticket, named by a link, key or number
   tq order [--queue NAME] [--limit N] print the tickets of each queue in working order
+  tq tabs                             print the tickets open in each running tq
   tq check                            read every queue once and print what came back
   tq help                             print this
 `
 
 // Run starts the interface and returns when the user quits. The program's
 // first argument can name a command that runs without the interface:
-// "order" prints the working order, "check" tests a profile, and "help"
-// prints the usage. Any other argument has to name a ticket, by link, key
-// or number: the interface then shows that ticket alone and loads no
-// queue. An argument that names neither is an error, so that a mistyped
+// "order" prints the working order, "tabs" the tickets open in the
+// interfaces that are running, "check" tests a profile, and "help" prints
+// the usage. Any other argument has to name a ticket, by link, key or
+// number: the interface then starts on that ticket and loads no queue. An argument that names neither is an error, so that a mistyped
 // command does not start a full-screen program.
 func Run(opts ...Option) error {
 	var cfg config
@@ -91,6 +93,17 @@ func Run(opts ...Option) error {
 	if err != nil {
 		return err
 	}
+	// What is kept on this machine is kept per site.
+	site := prof.Provider.Kind + " " + prof.Provider.BaseURL
+	if command == "tabs" {
+		// The tabs are read from files on this machine, so the command
+		// needs no credentials and is run before the provider is made.
+		dir, err := session.Dir(site)
+		if err != nil {
+			return err
+		}
+		return tabs(os.Stdout, dir, args)
+	}
 	prov, err := provider.New(prof.Provider)
 	if err != nil {
 		return err
@@ -112,7 +125,6 @@ func Run(opts ...Option) error {
 		}
 		uiOpts.Ticket = id
 	}
-	site := prof.Provider.Kind + " " + prof.Provider.BaseURL
 	if path, err := prefs.Path(site); err == nil {
 		uiOpts.Prefs = prefs.Open(path)
 	}
@@ -124,6 +136,9 @@ func Run(opts ...Option) error {
 	}
 	if dir, err := attach.Dir(site); err == nil {
 		uiOpts.Files = attach.Open(dir)
+	}
+	if dir, err := session.Dir(site); err == nil {
+		uiOpts.Session = session.Open(dir)
 	}
 	// The comment box is an editor drawn by a browser, which is started
 	// when the first ticket is shown and stopped here.

@@ -86,6 +86,20 @@ func fixtureTouches() map[string]touch {
 	}
 }
 
+// linked is the links of the fixture tickets by key, each link named from
+// both of its ends. Get adds them to the ticket it returns, with the title
+// and status of the ticket at the other end. A search returns none.
+var linked = map[string][]ticket.Link{
+	"DEMO-102": {{Relation: "is blocked by", ID: "DEMO-104", Key: "DEMO-104"}},
+	"DEMO-104": {
+		{Relation: "blocks", ID: "DEMO-102", Key: "DEMO-102"},
+		{Relation: "blocks", ID: "DEMO-107", Key: "DEMO-107"},
+		{Relation: "relates to", ID: "DEMO-110", Key: "DEMO-110"},
+	},
+	"DEMO-107": {{Relation: "is blocked by", ID: "DEMO-104", Key: "DEMO-104"}},
+	"DEMO-110": {{Relation: "relates to", ID: "DEMO-104", Key: "DEMO-104"}},
+}
+
 // PictureTicket is the fixture ticket that has a picture attached.
 const PictureTicket = "DEMO-108"
 

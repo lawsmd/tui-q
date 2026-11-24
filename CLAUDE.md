@@ -62,6 +62,7 @@ into this repository.
 | `internal/drafts` | comments started and not sent, as Markdown, saved per site and ticket |
 | `internal/people` | people mentioned in sent comments, saved per site and offered first after `@` |
 | `internal/attach` | files read from tickets, kept per site in the cache directory |
+| `internal/session` | the tickets open in the tabs of each running interface, kept per site in the cache directory for `tq tabs` |
 | `internal/browser` | opens a URL in the default browser, and a file in the program for its type |
 | `scripts/check-names` | the naming guard |
 
@@ -151,10 +152,24 @@ into this repository.
 - A platform that can read the history of a ticket implements `provider.RecentReader`,
   which a queue with `recent = true` loads through `arrange.Own`. The queue is one bucket
   that holds every ticket, made by the profile loader, so it pages as any bucket does.
+- A platform whose tickets link to other tickets lists them in `Ticket.Links` on a full
+  load, each with the relation worded from the ticket's side ("blocks", "is blocked by").
+  `provider/ado` lists none yet. With `links = true` in the profile the sidebar lists
+  them (`linkLines`), and a click on a key opens the ticket through `Model.openTicket`,
+  as a click on a row does.
+- Started on one ticket (`Model.only`), the interface loads no queue. It has ticket tabs
+  and the jump box, and its last tab cannot be closed (`lastTab`): there is no queue to
+  show in its place.
 - A profile never holds a secret. It names the environment variables that do.
 - `tq order` tells an LLM agent the order to work in. It prints key, status and title for
   each ticket. Do not add other fields, full ticket loads or writes to it: the agent reads
   and changes tickets through its own access to the platform.
+- `tq tabs` tells an LLM agent which tickets are open in the running interfaces.
+  `syncSession` runs after every message and writes the session file only when a tab
+  has changed. The command prints key, status and title for each ticket, and relation,
+  key and status for each of its links. Do not add other fields or ticket text to it,
+  and do not have it ask the platform anything. It names an interface by its process
+  ID and never by a pane: slate's listing of editors ties a process to its pane.
 
 ## Working on slate
 
@@ -183,9 +198,10 @@ between agents in two projects.
 
 ```
 go run ./cmd/tq            run the demo against the fake provider
-go run ./cmd/tq DEMO-104   show one ticket, named by a link, key or number, and load no queue
+go run ./cmd/tq DEMO-104   start on one ticket, named by a link, key or number, and load no queue
 go run ./cmd/tq check      read every queue once and print it, with no interface
 go run ./cmd/tq order      print the tickets of each queue in working order, for an LLM agent
+go run ./cmd/tq tabs       print the tickets open in each running tq, for an LLM agent
 go test ./...              tests
 go test ./internal/ui -run '^$' -bench .    what one message costs in each view
 go vet ./...               static checks

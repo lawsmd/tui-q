@@ -20,8 +20,12 @@ const (
 	jumpIdleWidth = 24
 )
 
-// jumpHint is the text in the empty jump box.
-const jumpHint = "ticket number, key or link"
+// jumpHint is the text in the empty jump box, and jumpButton the name of
+// the button the box is drawn as where it has no room.
+const (
+	jumpHint   = "ticket number, key or link"
+	jumpButton = "go to"
+)
 
 // jumpedMsg carries a ticket loaded from the jump box, and the moves open
 // to it.
@@ -126,16 +130,16 @@ func (m *Model) showLoaded(msg jumpedMsg) {
 }
 
 // jumpLayer draws the jump box on the top row so that it ends before
-// column right, and returns the column it starts at. The
-// queue tabs need the first need columns of the row. Without the keyboard
+// column right, and returns the column it starts at. The tabs before it
+// need the first need columns of the row. Without the keyboard
 // the box is drawn short, or as a button, or left out, whichever is the
-// most that leaves the queue tabs their room; the slash key opens it in
+// most that leaves those tabs their room; the slash key opens it in
 // every case. With the keyboard it is wide enough for a link and covers
 // the tabs beside it.
 func (m *Model) jumpLayer(right, need int) (*lipgloss.Layer, int) {
 	s := m.styles
 	idle, x := "", right+1
-	for _, form := range []string{s.JumpHint.Render(fit(" go to ticket", jumpIdleWidth)), s.Button.Render("go to")} {
+	for _, form := range []string{s.JumpHint.Render(fit(" go to ticket", jumpIdleWidth)), s.Button.Render(jumpButton)} {
 		if at := right - lipgloss.Width(form); at-1 >= need {
 			idle, x = form, at
 			break

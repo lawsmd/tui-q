@@ -134,6 +134,9 @@ type TicketView struct {
 	// Pictures draws the pictures of a ticket in its view when true. When
 	// false a picture is a line with its name, which opens it.
 	Pictures bool `toml:"pictures"`
+	// Links lists the tickets a ticket is linked to in the sidebar when
+	// true, each under what it is to the ticket.
+	Links bool `toml:"links"`
 }
 
 // Field describes a field beyond the built-in ones.

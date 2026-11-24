@@ -336,15 +336,18 @@ func (m *Model) discardComment() {
 	}
 }
 
-// Close removes the comment box, keeping its text as a draft, and the
-// pictures of the ticket on screen. The program calls it once the interface
-// has ended: an editor or a picture left open would leave its image on the
-// terminal.
+// Close removes the comment box, keeping its text as a draft, the pictures
+// of the ticket on screen, and the session file. The program calls it once
+// the interface has ended: an editor or a picture left open would leave its
+// image on the terminal, and the file would list tabs that are gone.
 func (m *Model) Close() {
 	m.closeComposer(true)
 	m.settle()
 	closeAll(m.openPictures())
 	m.pics, m.picsOf = nil, ""
+	if m.session != nil {
+		_ = m.session.Close()
+	}
 }
 
 // sendComment posts the text of the comment box as a comment on its

@@ -195,10 +195,10 @@ func (p *Provider) SearchPage(ctx context.Context, query, cursor string, limit i
 }
 
 // Get loads one issue with its description, its comments, its attachments,
-// and the fields of its edit screen.
+// its links to other issues, and the fields of its edit screen.
 func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 	path := "/rest/api/3/issue/" + url.PathEscape(id) +
-		"?expand=editmeta&fields=" + url.QueryEscape(strings.Join(p.fieldIDs("description", "comment", "attachment"), ","))
+		"?expand=editmeta&fields=" + url.QueryEscape(strings.Join(p.fieldIDs("description", "comment", "attachment", "issuelinks"), ","))
 	var is issue
 	if err := p.client.Do(ctx, http.MethodGet, path, nil, &is); err != nil {
 		return ticket.Ticket{}, err
@@ -222,6 +222,56 @@ func attachments(raw json.RawMessage) []ticket.Attachment {
 	out := make([]ticket.Attachment, len(files))
 	for i, a := range files {
 		out[i] = ticket.Attachment{ID: a.ID, Name: a.Filename, MIME: a.MimeType, Size: a.Size}
+	}
+	return out
+}
+
+// links reads the links of an issue to other issues. Jira names each kind
+// of link from both ends, and gives the issue at the other end as the
+// outward or the inward one: the name for that end is the one that reads
+// from this issue. base is the address of the site.
+func links(raw json.RawMessage, base string) []ticket.Link {
+	type other struct {
+		Key    string `json:"key"`
+		Fields struct {
+			Summary string `json:"summary"`
+			Status  struct {
+				Name string `json:"name"`
+			} `json:"status"`
+			Type struct {
+				Name string `json:"name"`
+			} `json:"issuetype"`
+		} `json:"fields"`
+	}
+	var entries []struct {
+		Type struct {
+			Inward  string `json:"inward"`
+			Outward string `json:"outward"`
+		} `json:"type"`
+		Inward  *other `json:"inwardIssue"`
+		Outward *other `json:"outwardIssue"`
+	}
+	if json.Unmarshal(raw, &entries) != nil {
+		return nil
+	}
+	var out []ticket.Link
+	for _, e := range entries {
+		is, relation := e.Outward, e.Type.Outward
+		if is == nil {
+			is, relation = e.Inward, e.Type.Inward
+		}
+		if is == nil || is.Key == "" {
+			continue
+		}
+		out = append(out, ticket.Link{
+			Relation: relation,
+			ID:       is.Key,
+			Key:      is.Key,
+			Title:    is.Fields.Summary,
+			Status:   is.Fields.Status.Name,
+			Type:     is.Fields.Type.Name,
+			URL:      base + "/browse/" + is.Key,
+		})
 	}
 	return out
 }
@@ -506,6 +556,7 @@ func (p *Provider) toTicket(is issue, byMedia map[string]ticket.Attachment) tick
 		Fields:   map[string]ticket.Value{},
 	}
 	t.Attachments = attachments(f["attachment"])
+	t.Links = links(f["issuelinks"], p.client.BaseURL())
 	shown := files{all: t.Attachments, byMedia: byMedia}
 	t.Body = adfToMarkdown(f["description"], shown)
 	for name, id := range p.fields {

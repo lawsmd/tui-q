@@ -26,6 +26,7 @@ import (
 	"github.com/lawsmd/tui-q/internal/ops"
 	"github.com/lawsmd/tui-q/internal/people"
 	"github.com/lawsmd/tui-q/internal/prefs"
+	"github.com/lawsmd/tui-q/internal/session"
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
@@ -94,6 +95,8 @@ const (
 	idCommentDiscard = "commentdiscard"
 	// idCommentKind is one of the kinds of comment on the line of the box.
 	idCommentKind = "commentkind"
+	// idLink is the key of a linked ticket in the sidebar of a ticket.
+	idLink = "link"
 )
 
 // hitEvent is one mouse gesture.
@@ -247,6 +250,13 @@ type Model struct {
 	// drawnWidth is the width a main column of a ticket was last drawn at.
 	// A command that reads a ticket renders its Markdown at this width.
 	drawnWidth atomic.Int64
+
+	// session is the file that tells another process which tickets are
+	// open in tabs, or nil. sessionSent is the tabs last sent to it, and
+	// sessionN the number of times they have changed.
+	session     *session.Writer
+	sessionSent []session.Tab
+	sessionN    int
 }
 
 // Options are the parts of the model that an instance or a machine
@@ -260,8 +270,9 @@ type Options struct {
 	// Sections are the instance's own sections at the top of the ticket
 	// sidebar.
 	Sections []ext.Section
-	// Ticket is the ID of one ticket to show by itself. When it is set the
-	// interface loads no queue and shows nothing but that ticket.
+	// Ticket is the ID of one ticket to start on. When it is set the
+	// interface loads no queue: it shows that ticket, and the tickets
+	// opened from it or from the jump box, each in a tab.
 	Ticket string
 	// Drafts holds the comments started and not sent. When it is nil they
 	// last until the program exits.
@@ -283,6 +294,9 @@ type Options struct {
 	// WarmEditor, when set, is called once as the first ticket is shown,
 	// to get the editor ready ahead of the first comment.
 	WarmEditor func()
+	// Session is told which tickets are open in tabs, for "tq tabs" to
+	// print from another process. When it is nil nothing is told.
+	Session *session.Writer
 }
 
 // New builds the model for a profile and its provider.
@@ -312,6 +326,7 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 		openEditor:  opts.OpenEditor,
 		openPicture: opts.OpenPicture,
 		warm:        opts.WarmEditor,
+		session:     opts.Session,
 		styles:      DefaultStyles(),
 		activeTab:   -1,
 		only:        opts.Ticket,
@@ -525,7 +540,7 @@ func (m *Model) read(ctx context.Context, id string) (ticket.Ticket, []ticket.Tr
 }
 
 func (m *Model) closeTab(i int) {
-	if i < 0 || i >= len(m.tabs) {
+	if i < 0 || i >= len(m.tabs) || m.lastTab() {
 		return
 	}
 	m.tabDrag = nil
@@ -592,8 +607,8 @@ func (m *Model) openAttachment(t ticket.Ticket, id string) tea.Cmd {
 	})
 }
 
-// Update handles one message, then brings the comment box and the pictures
-// in line with what the message changed.
+// Update handles one message, then brings the comment box, the pictures
+// and the session file in line with what the message changed.
 //
 // The mouse moving with no button down is handled apart. A terminal reports
 // it on every cell the mouse crosses, which makes it the commonest message
@@ -613,7 +628,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	m.still, m.fresh = false, false
 	_, cmd := m.update(msg)
-	return m, tea.Batch(cmd, m.syncComposer(), m.syncPictures())
+	return m, tea.Batch(cmd, m.syncComposer(), m.syncPictures(), m.syncSession())
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -884,9 +899,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 	}
 	if m.only != "" {
-		// Nothing leads away from the one ticket.
+		// No queue was loaded for these to lead to.
 		switch k {
-		case "/", "tab", "shift+tab", "ctrl+w":
+		case "tab", "shift+tab":
 			return nil
 		}
 	}
@@ -1129,6 +1144,14 @@ func (m *Model) click(ev hit.Event) tea.Cmd {
 		}
 	case idSection:
 		m.sectionMenu(n, ev.X, ev.Y)
+	case idLink:
+		// A linked ticket opens as a ticket of a queue does: in a tab of
+		// its own, or in the tab it already has.
+		if m.activeTab >= 0 {
+			if links := m.tabs[m.activeTab].t.Links; n >= 0 && n < len(links) {
+				return m.openTicket(links[n].Ticket())
+			}
+		}
 	case idMove, idAssign, idField, idAction:
 		if m.activeTab < 0 {
 			return nil

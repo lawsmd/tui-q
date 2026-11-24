@@ -470,6 +470,39 @@ func TestCommentBoxGetsUnknownMessagesAndIsCoveredByPopups(t *testing.T) {
 	}
 }
 
+func TestCommentBoxFollowsTheTicketTabOnShow(t *testing.T) {
+	dir := t.TempDir()
+	m, eds := newCommenting(t, 110, 31, Options{Drafts: drafts.Open(dir)})
+	first := openBox(t, m, eds)
+	first.text = "For the first"
+	send(t, m, editor.Changed{})
+
+	// A second ticket takes the screen: the box of the first closes with
+	// its draft kept, and one opens for the second.
+	send(t, m, tea.KeyPressMsg{Code: '/', Text: "/"})
+	typeText(t, m, "104")
+	enter(t, m)
+	second := eds.box(t)
+	if !first.closed || len(eds.boxes) != 2 || second.cfg.Meta["ticket"] != "DEMO-104" || second.text != "" {
+		t.Fatalf("closed=%v boxes=%d second=%+v", first.closed, len(eds.boxes), second.cfg)
+	}
+	second.text = "For the second"
+	send(t, m, editor.Changed{})
+
+	// Each tab gets a box holding its own draft.
+	for i, want := range []string{"For the first", "For the second"} {
+		clickLayer(t, m, layerID(idTicketTab, i))
+		b := eds.box(t)
+		if len(eds.boxes) != 3+i || b.closed || b.cfg.Markdown != want || b.cfg.Meta["ticket"] != m.tabs[i].t.Key {
+			t.Fatalf("tab %d: boxes=%d closed=%v box=%+v, want one open with %q", i, len(eds.boxes), b.closed, b.cfg, want)
+		}
+		if m.composer == nil || m.composer.id != m.tabs[i].t.ID {
+			t.Fatalf("tab %d: the box on screen is not its ticket's", i)
+		}
+	}
+	checkBox(t, m, eds.box(t), 110, 31, "second ticket tab")
+}
+
 func TestLeavingTheTicketKeepsTheDraft(t *testing.T) {
 	dir := t.TempDir()
 	m, eds := newCommenting(t, 110, 31, Options{Drafts: drafts.Open(dir)})
