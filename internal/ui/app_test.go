@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/lawsmd/tui-q/internal/ops"
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/provider/fake"
 )
@@ -553,7 +554,7 @@ func TestWriteLocksInput(t *testing.T) {
 	m := newModel(t, 110, 30)
 	m.View()
 	// Start a write and leave it unfinished.
-	m.start("Moving DEMO-101", true, func(context.Context) (tea.Msg, error) { return nil, nil })
+	m.start("Moving DEMO-101", ops.Write, func(context.Context) (tea.Msg, error) { return nil, nil })
 	if !strings.Contains(screen(m), "input locked") {
 		t.Error("status bar does not say input is locked")
 	}
@@ -575,8 +576,8 @@ func TestStatusBarHasARuleInItsColour(t *testing.T) {
 	if got := rule(); got != m.styles.StatusRule.Render(line) {
 		t.Fatalf("idle rule = %q", got)
 	}
-	m.start("Loading DEMO-101", false, func(context.Context) (tea.Msg, error) { return nil, nil })
-	m.start("Loading DEMO-102", false, func(context.Context) (tea.Msg, error) { return nil, nil })
+	m.start("Loading DEMO-101", ops.Background, func(context.Context) (tea.Msg, error) { return nil, nil })
+	m.start("Loading DEMO-102", ops.Background, func(context.Context) (tea.Msg, error) { return nil, nil })
 	if got := rule(); got != m.styles.StatusRuleBusy.Render(line) {
 		t.Fatalf("rule while an operation runs = %q", got)
 	}

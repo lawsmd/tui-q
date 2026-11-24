@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lawsmd/tui-q/internal/editor"
+	"github.com/lawsmd/tui-q/internal/ops"
 	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
 )
@@ -79,7 +80,7 @@ func (m *Model) attachmentFile(ctx context.Context, a ticket.Attachment) (string
 func (m *Model) loadPicture(t ticket.Ticket, id string) tea.Cmd {
 	a, _ := t.Attachment(id)
 	open, back := m.openPicture, m.styles.PictureBack
-	return m.start("Reading "+a.Name, false, func(ctx context.Context) (tea.Msg, error) {
+	return m.start("Reading "+a.Name, ops.Background, func(ctx context.Context) (tea.Msg, error) {
 		path, err := m.attachmentFile(ctx, a)
 		if err != nil {
 			return nil, err

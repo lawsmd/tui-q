@@ -3,8 +3,10 @@
 A terminal UI for working ticket queues with the mouse. The command is `tq`.
 
 Queues are tabs across the top. Clicking a ticket opens it in a second row of tabs. A
-status bar at the foot of the pane, under a rule, shows what the program is doing; while a change is being
-written to the platform, input is locked until it finishes.
+status bar at the foot of the pane, under a rule, shows what the program is doing. While
+it waits on a request the user asked for (a ticket opening, a queue being read again, a
+change being written to the platform), the view is drawn grey and input is locked until
+the request ends.
 
 It is built on [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 [Lip Gloss](https://github.com/charmbracelet/lipgloss) and

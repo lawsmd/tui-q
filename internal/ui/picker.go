@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lawsmd/tui-q/internal/hit"
+	"github.com/lawsmd/tui-q/internal/ops"
 	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
 )
@@ -240,7 +241,7 @@ func (m *Model) pickSearch(msg pickSearchMsg) tea.Cmd {
 		return nil
 	}
 	t, field, seq := p.t, p.field, p.seq
-	return m.start("Searching for "+query, false, func(ctx context.Context) (tea.Msg, error) {
+	return m.start("Searching for "+query, ops.Background, func(ctx context.Context) (tea.Msg, error) {
 		values, err := sg.Suggest(ctx, t.ID, field, query)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", t.Key, err)

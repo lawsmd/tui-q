@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/lawsmd/tui-q/internal/ops"
 	"github.com/lawsmd/tui-q/ticket"
 )
 
@@ -42,7 +43,7 @@ func newJump(s Styles) textinput.Model {
 
 // focusJump gives the keyboard to the jump box.
 func (m *Model) focusJump() tea.Cmd {
-	if m.jumping || m.ops.Locked() {
+	if m.jumping {
 		return nil
 	}
 	m.menu = nil
@@ -97,7 +98,7 @@ func (m *Model) jumpTo(text string) tea.Cmd {
 // loadByID loads a ticket that no queue has supplied, and shows it in a
 // tab once it has loaded.
 func (m *Model) loadByID(id string) tea.Cmd {
-	return m.start("Loading "+id, false, func(ctx context.Context) (tea.Msg, error) {
+	return m.start("Loading "+id, ops.Wait, func(ctx context.Context) (tea.Msg, error) {
 		t, err := m.prov.Get(ctx, id)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", id, err)

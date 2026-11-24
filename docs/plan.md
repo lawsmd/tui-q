@@ -134,7 +134,8 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   name only. The columns on offer are the profile's for that queue, then every other
   field. These settings are saved per site in the user's configuration directory,
   outside the profile.
-- Reads show in the status bar and leave input free. Writes lock input until they end.
+- Every request shows in the status bar. A read the user asked for and a write lock input
+  and grey the view until they end. Reads in the background leave input free.
   Failures stay in the status bar until dismissed.
 - A custom field with no value is left out of a ticket whose edit screen does not have
   it. One profile can then list the fields of several ticket types.

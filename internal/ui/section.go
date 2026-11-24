@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/lawsmd/tui-q/ext"
+	"github.com/lawsmd/tui-q/internal/ops"
 	"github.com/lawsmd/tui-q/ticket"
 )
 
@@ -63,7 +64,7 @@ func (m *Model) readSections(t ticket.Ticket) tea.Cmd {
 		if !applies {
 			continue
 		}
-		cmds = append(cmds, m.start("Reading "+sec.Title+" for "+t.Key, false, func(ctx context.Context) (tea.Msg, error) {
+		cmds = append(cmds, m.start("Reading "+sec.Title+" for "+t.Key, ops.Background, func(ctx context.Context) (tea.Msg, error) {
 			lines, err := sec.Read(ctx, t)
 			return sectionReadMsg{ticketID: t.ID, i: i, lines: lines, err: err}, nil
 		}))

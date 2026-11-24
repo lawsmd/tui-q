@@ -1,9 +1,11 @@
 // Package ops runs provider calls off the UI goroutine and tracks them for
 // the status bar.
 //
-// A read leaves the interface usable while it runs. A write locks input
-// until it finishes, which rules out a second action landing on a ticket
-// whose state is about to change.
+// An operation the user is waiting on locks input until it finishes: a read
+// they asked for, or a write. That rules out a second action landing on a
+// ticket whose state is about to change, and an answer arriving for a view
+// the user has since left. An operation in the background leaves the
+// interface usable while it runs.
 package ops
 
 import (
@@ -18,6 +20,20 @@ import (
 const DefaultTimeout = 30 * time.Second
 
 const logSize = 50
+
+// Mode says what an operation is to the user, which decides whether input
+// is taken while it runs.
+type Mode int
+
+const (
+	// Background is a read nobody is waiting on: what the program reads
+	// when it starts, or reads again after a change. Input stays free.
+	Background Mode = iota
+	// Wait is a read the user asked for. Input is refused until it ends.
+	Wait
+	// Write changes a ticket. Input is refused until it ends.
+	Write
+)
 
 // Func is the work of one operation. The message it returns is delivered
 // to the UI when the operation succeeds.
@@ -39,7 +55,7 @@ type DoneMsg struct {
 type Entry struct {
 	ID      int
 	Label   string
-	Write   bool
+	Mode    Mode
 	Started time.Time
 	Ended   time.Time
 	Err     error
@@ -47,6 +63,9 @@ type Entry struct {
 	// step is written by the operation's goroutine and read by the UI.
 	step *atomic.Pointer[string]
 }
+
+// Locks reports whether input is refused while the operation runs.
+func (e Entry) Locks() bool { return e.Mode != Background }
 
 // Step is the step a running operation last reported, or "".
 func (e Entry) Step() string {
@@ -74,19 +93,19 @@ type Runner struct {
 func New() *Runner { return &Runner{Timeout: DefaultTimeout} }
 
 // Start records an operation and returns the command that runs it.
-func (r *Runner) Start(label string, write bool, fn Func) tea.Cmd {
-	return r.StartSteps(label, write, 0, func(ctx context.Context, _ func(string)) (tea.Msg, error) {
+func (r *Runner) Start(label string, mode Mode, fn Func) tea.Cmd {
+	return r.StartSteps(label, mode, 0, func(ctx context.Context, _ func(string)) (tea.Msg, error) {
 		return fn(ctx)
 	})
 }
 
 // StartSteps is Start for an operation that reports its steps. A timeout
 // of zero means the runner's own.
-func (r *Runner) StartSteps(label string, write bool, timeout time.Duration, fn StepFunc) tea.Cmd {
+func (r *Runner) StartSteps(label string, mode Mode, timeout time.Duration, fn StepFunc) tea.Cmd {
 	r.next++
 	id := r.next
 	step := &atomic.Pointer[string]{}
-	r.active = append(r.active, Entry{ID: id, Label: label, Write: write, Started: time.Now(), step: step})
+	r.active = append(r.active, Entry{ID: id, Label: label, Mode: mode, Started: time.Now(), step: step})
 	if timeout <= 0 {
 		timeout = r.Timeout
 	}
@@ -130,21 +149,24 @@ func (r *Runner) Busy() bool { return len(r.active) > 0 }
 // Count is the number of operations running.
 func (r *Runner) Count() int { return len(r.active) }
 
-// Locked reports whether a write is running, which locks input.
+// Last is the ID of the operation started last, or 0 before the first.
+func (r *Runner) Last() int { return r.next }
+
+// Locked reports whether an operation that locks input is running.
 func (r *Runner) Locked() bool {
 	for _, e := range r.active {
-		if e.Write {
+		if e.Locks() {
 			return true
 		}
 	}
 	return false
 }
 
-// Current returns the operation to show in the status bar: the running
-// write when there is one, and the oldest running read otherwise.
+// Current returns the operation to show in the status bar: the one that
+// locks input when there is one, and the oldest running otherwise.
 func (r *Runner) Current() (Entry, bool) {
 	for _, e := range r.active {
-		if e.Write {
+		if e.Locks() {
 			return e, true
 		}
 	}

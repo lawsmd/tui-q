@@ -114,14 +114,14 @@ func splitID(id string) (kind string, n int) {
 
 // queueLoadedMsg carries the result of a queue search.
 type queueLoadedMsg struct {
-	index   int
-	tickets []ticket.Ticket
+	index, seq int
+	tickets    []ticket.Ticket
 }
 
 // bucketLoadedMsg carries one page of a bucket that has its own query.
 type bucketLoadedMsg struct {
-	queue, bucket, page int
-	result              provider.Page
+	queue, bucket, seq, page int
+	result                   provider.Page
 }
 
 // ticketLoadedMsg carries one ticket loaded in full and the moves open to
@@ -303,7 +303,7 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 	}
 	m.jump = newJump(m.styles)
 	for i := range prof.Queues {
-		m.queues = append(m.queues, &queue{cfg: &prof.Queues[i]})
+		m.queues = append(m.queues, &queue{cfg: &prof.Queues[i], loads: map[int]bool{}, newest: map[int]int{}})
 	}
 	return m
 }
@@ -313,14 +313,14 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 // ticket in place of the queues.
 func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
-		m.start("Loading the account", false, func(ctx context.Context) (tea.Msg, error) {
+		m.start("Loading the account", ops.Background, func(ctx context.Context) (tea.Msg, error) {
 			me, err := m.prov.Me(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("account: %w", err)
 			}
 			return meMsg{me: me}, nil
 		}),
-		m.start("Loading field names", false, func(ctx context.Context) (tea.Msg, error) {
+		m.start("Loading field names", ops.Background, func(ctx context.Context) (tea.Msg, error) {
 			labels, err := m.prov.FieldLabels(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("field names: %w", err)
@@ -356,9 +356,11 @@ func (m *Model) label(name string) string {
 }
 
 // start runs a provider call through the operation runner and keeps the
-// status bar spinner ticking while it runs.
-func (m *Model) start(label string, write bool, fn ops.Func) tea.Cmd {
-	return m.spinWith(m.ops.Start(label, write, fn))
+// status bar spinner ticking while it runs. The mode says whether input is
+// refused until it ends: ops.Wait for a read the user asked for, ops.Write
+// for a change, and ops.Background for anything else.
+func (m *Model) start(label string, mode ops.Mode, fn ops.Func) tea.Cmd {
+	return m.spinWith(m.ops.Start(label, mode, fn))
 }
 
 // spinWith adds the spinner's tick to the command of a new operation.
@@ -378,20 +380,21 @@ func (m *Model) loadQueue(i int) tea.Cmd {
 	var cmds []tea.Cmd
 	if !q.cfg.OwnQueries() {
 		query := q.cfg.Query
-		cmds = append(cmds, m.start("Loading "+q.cfg.Name, false, func(ctx context.Context) (tea.Msg, error) {
+		seq := q.reading(fromQueue)
+		cmds = append(cmds, m.start("Loading "+q.cfg.Name, ops.Background, func(ctx context.Context) (tea.Msg, error) {
 			tickets, err := m.prov.Search(ctx, query)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", q.cfg.Name, err)
 			}
-			return queueLoadedMsg{index: i, tickets: tickets}, nil
+			return queueLoadedMsg{index: i, seq: seq, tickets: tickets}, nil
 		}))
+		q.loads[m.ops.Last()] = true
 	}
 	for j, b := range q.cfg.Buckets {
 		if b.Query != "" {
 			cmds = append(cmds, m.loadBucket(i, j, q.page(j).page))
 		}
 	}
-	q.pending += len(cmds)
 	return tea.Batch(cmds...)
 }
 
@@ -411,7 +414,8 @@ func (m *Model) loadBucket(i, j, page int) tea.Cmd {
 		cursor = st.cursors[page]
 		label = fmt.Sprintf("%s, page %d", label, page+1)
 	}
-	return m.start(label, false, func(ctx context.Context) (tea.Msg, error) {
+	seq := q.reading(j)
+	cmd := m.start(label, ops.Background, func(ctx context.Context) (tea.Msg, error) {
 		result, err := m.prov.SearchPage(ctx, b.Query, cursor, b.PageSize)
 		if page > 0 && (err != nil || len(result.Tickets) == 0) {
 			page = 0
@@ -420,8 +424,10 @@ func (m *Model) loadBucket(i, j, page int) tea.Cmd {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", b.Name, err)
 		}
-		return bucketLoadedMsg{queue: i, bucket: j, page: page, result: result}, nil
+		return bucketLoadedMsg{queue: i, bucket: j, seq: seq, page: page, result: result}, nil
 	})
+	q.loads[m.ops.Last()] = true
+	return cmd
 }
 
 // turnPage shows the page before or after the one a bucket is on. A
@@ -459,7 +465,7 @@ func (m *Model) openTicket(t ticket.Ticket) tea.Cmd {
 }
 
 func (m *Model) loadTicket(id, key string) tea.Cmd {
-	return m.start("Loading "+key, false, func(ctx context.Context) (tea.Msg, error) {
+	return m.start("Loading "+key, ops.Wait, func(ctx context.Context) (tea.Msg, error) {
 		t, err := m.prov.Get(ctx, id)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", key, err)
@@ -500,7 +506,7 @@ func (m *Model) openURL(t ticket.Ticket) tea.Cmd {
 	if t.URL == "" {
 		return nil
 	}
-	return m.start("Opening "+t.Key+" in the browser", false, func(context.Context) (tea.Msg, error) {
+	return m.start("Opening "+t.Key+" in the browser", ops.Background, func(context.Context) (tea.Msg, error) {
 		if err := browser.Open(t.URL); err != nil {
 			return nil, err
 		}
@@ -526,7 +532,7 @@ func (m *Model) openAttachment(t ticket.Ticket, id string) tea.Cmd {
 		return nil
 	}
 	a, _ := t.Attachment(id)
-	return m.start("Opening "+a.Name, false, func(ctx context.Context) (tea.Msg, error) {
+	return m.start("Opening "+a.Name, ops.Wait, func(ctx context.Context) (tea.Msg, error) {
 		path, err := m.attachmentFile(ctx, a)
 		if err != nil {
 			return nil, err
@@ -586,7 +592,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case ops.DoneMsg:
-		if entry := m.ops.Finish(msg); entry.Write {
+		if entry := m.ops.Finish(msg); entry.Mode == ops.Write {
 			// A write that failed, or that stopped to ask for values,
 			// changed nothing: put back what was shown ahead of it.
 			_, asked := msg.Msg.(needFieldsMsg)
@@ -595,12 +601,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.undo = nil
 		}
-		if !m.ops.Busy() {
-			// With nothing running no queue is waiting on a read, whatever
-			// the count says after a read that failed.
-			for _, q := range m.queues {
-				q.pending = 0
-			}
+		// A queue stops waiting on a read that ended, whether or not the read
+		// brought anything back.
+		for _, q := range m.queues {
+			delete(q.loads, msg.ID)
 		}
 		if msg.Err != nil {
 			m.clearLoading()
@@ -612,13 +616,18 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case queueLoadedMsg:
 		q := m.queues[msg.index]
+		if q.stale(fromQueue, msg.seq) {
+			return m, nil
+		}
 		q.setSource(fromQueue, msg.tickets)
 		q.loading = false
-		q.pending = max(q.pending-1, 0)
 		q.loadedAt = time.Now()
 
 	case bucketLoadedMsg:
 		q := m.queues[msg.queue]
+		if q.stale(msg.bucket, msg.seq) {
+			return m, nil
+		}
 		st := q.page(msg.bucket)
 		st.page, st.total, st.more, st.loaded = msg.page, msg.result.Total, msg.result.Next != "", true
 		// Keep the cursors up to this page, and add the one for the next.
@@ -628,7 +637,6 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		q.setSource(msg.bucket, msg.result.Tickets)
 		q.loading = false
-		q.pending = max(q.pending-1, 0)
 		q.loadedAt = time.Now()
 
 	case ticketLoadedMsg:
@@ -690,6 +698,14 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(sections, m.reloadQueues())
 
 	case tea.KeyPressMsg:
+		if m.blocked() {
+			// A form, the tag box, the jump box and the comment box take no
+			// keys either while the user waits on a request.
+			if msg.String() == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
 		if m.form != nil {
 			switch msg.String() {
 			case "ctrl+c":
@@ -716,7 +732,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// which shows the tooltip of a bucket's info mark.
 		if mm, ok := msg.(tea.MouseMotionMsg); ok && mm.Button == tea.MouseNone {
 			m.hover = ""
-			if !m.refreshing() {
+			if !m.blocked() {
 				m.hover = m.at(mm.X, mm.Y)
 			}
 			return m, nil
@@ -750,6 +766,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	default:
+		if _, paste := msg.(tea.PasteMsg); paste && m.blocked() {
+			return m, nil
+		}
 		// Anything else is a message one of the form's fields sent itself,
 		// pasted text or a cursor blink for the jump box, or a message of
 		// the comment box or of a picture, which get every one of them.
@@ -773,14 +792,15 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// refreshing reports whether the queue on screen is being read again. The
-// view takes no input until it is read, and is drawn grey.
+// refreshing reports whether the queue on screen is being read again.
 func (m *Model) refreshing() bool {
-	return m.only == "" && m.activeTab < 0 && m.queues[m.activeQueue].pending > 0
+	return m.only == "" && m.activeTab < 0 && len(m.queues[m.activeQueue].loads) > 0
 }
 
-// blocked reports whether input is refused: a write is running, or the
-// queue on screen is being read again.
+// blocked reports whether input is refused: the user is waiting on a read
+// they asked for or on a write, or the queue on screen is being read again.
+// The view is drawn grey for as long, all but the status bar, which says
+// what is being waited on.
 func (m *Model) blocked() bool {
 	return m.ops.Locked() || m.refreshing()
 }
@@ -803,9 +823,6 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	k := msg.String()
 	if k == "ctrl+c" {
 		return tea.Quit
-	}
-	if m.blocked() {
-		return nil
 	}
 	if m.only != "" {
 		// Nothing leads away from the one ticket.
@@ -1138,7 +1155,7 @@ func (m *Model) grey(frame string) string {
 func (m *Model) View() tea.View {
 	m.comp = m.compose()
 	frame := m.comp.Render()
-	if m.refreshing() {
+	if m.blocked() {
 		frame = m.grey(frame)
 	}
 	v := tea.NewView(frame)

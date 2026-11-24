@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/lawsmd/tui-q/internal/editor"
+	"github.com/lawsmd/tui-q/internal/ops"
 	"github.com/lawsmd/tui-q/internal/people"
 	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
@@ -182,7 +183,7 @@ func (m *Model) openComposer(t ticket.Ticket) tea.Cmd {
 		Mentions: mentions(m.prov, m.people, t.ID),
 	}
 	// Opening starts a page in a browser, which takes too long for Update.
-	return m.start("Opening the comment box", false, func(context.Context) (tea.Msg, error) {
+	return m.start("Opening the comment box", ops.Background, func(context.Context) (tea.Msg, error) {
 		box, err := open(cfg)
 		return composerOpenedMsg{id: t.ID, box: box, err: err}, nil
 	})
@@ -319,7 +320,7 @@ func (m *Model) Close() {
 // ticket. The box and the draft stay until the platform has taken it.
 func (m *Model) sendComment() tea.Cmd {
 	c, cm := m.composer, m.commenter()
-	if c == nil || c.box == nil || cm == nil || m.ops.Locked() {
+	if c == nil || c.box == nil || cm == nil {
 		return nil
 	}
 	if strings.TrimSpace(c.box.Text()) == "" {
@@ -493,7 +494,7 @@ func (m *Model) syncComposer() tea.Cmd {
 // reports false for a key that is not the box's to take.
 func (m *Model) composerKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	c := m.composer
-	if c == nil || !c.writing || m.menu != nil || m.picker != nil || m.ops.Locked() {
+	if c == nil || !c.writing || m.menu != nil || m.picker != nil {
 		return nil, false
 	}
 	switch msg.String() {
@@ -568,7 +569,7 @@ func (m *Model) composerPass(msg tea.Msg) tea.Cmd {
 	if c == nil || c.box == nil {
 		return nil
 	}
-	if _, paste := msg.(tea.PasteMsg); paste && (!c.writing || c.covered || m.jumping || m.ops.Locked()) {
+	if _, paste := msg.(tea.PasteMsg); paste && (!c.writing || c.covered || m.jumping) {
 		return nil
 	}
 	return c.box.Update(msg)

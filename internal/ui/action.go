@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lawsmd/tui-q/ext"
+	"github.com/lawsmd/tui-q/internal/ops"
 	"github.com/lawsmd/tui-q/ticket"
 )
 
@@ -52,7 +53,7 @@ func (m *Model) doAction(a ext.Action, t ticket.Ticket, values map[string]ticket
 	}
 	m.undo = nil
 	label := a.Name + ": " + t.Key
-	return m.spinWith(m.ops.StartSteps(label, true, timeout, func(ctx context.Context, report func(string)) (tea.Msg, error) {
+	return m.spinWith(m.ops.StartSteps(label, ops.Write, timeout, func(ctx context.Context, report func(string)) (tea.Msg, error) {
 		note, err := a.Run(ctx, ext.Run{Ticket: t, Values: values, Provider: m.prov, Progress: report})
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", label, err)

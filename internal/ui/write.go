@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lawsmd/tui-q/internal/ops"
 	"github.com/lawsmd/tui-q/ticket"
 )
 
@@ -45,7 +46,7 @@ type needFieldsMsg struct {
 // it ends. undo, when not nil, is called if the write fails.
 func (m *Model) write(label string, undo func(), fn func(ctx context.Context) (tea.Msg, error)) tea.Cmd {
 	m.undo = undo
-	return m.start(label, true, fn)
+	return m.start(label, ops.Write, fn)
 }
 
 // reloaded reads a ticket back after a write and wraps it for the model.
@@ -171,7 +172,7 @@ func (m *Model) setField(t ticket.Ticket, name string, v ticket.Value, undo func
 
 // loadTransitions fetches the moves open to a ticket for a menu at x, y.
 func (m *Model) loadTransitions(t ticket.Ticket, x, y int) tea.Cmd {
-	return m.start("Loading the moves open to "+t.Key, false, func(ctx context.Context) (tea.Msg, error) {
+	return m.start("Loading the moves open to "+t.Key, ops.Wait, func(ctx context.Context) (tea.Msg, error) {
 		trs, err := m.prov.Transitions(ctx, t.ID)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", t.Key, err)
@@ -183,7 +184,7 @@ func (m *Model) loadTransitions(t ticket.Ticket, x, y int) tea.Cmd {
 // findUsers searches for people a ticket can be assigned to, for a menu
 // at x, y.
 func (m *Model) findUsers(t ticket.Ticket, query string, x, y int) tea.Cmd {
-	return m.start("Searching for "+query, false, func(ctx context.Context) (tea.Msg, error) {
+	return m.start("Searching for "+query, ops.Wait, func(ctx context.Context) (tea.Msg, error) {
 		users, err := m.prov.Users(ctx, t.ID, query)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", t.Key, err)

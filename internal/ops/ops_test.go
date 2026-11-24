@@ -12,7 +12,7 @@ type result string
 
 func TestReadDoesNotLock(t *testing.T) {
 	r := New()
-	cmd := r.Start("load", false, func(context.Context) (tea.Msg, error) { return result("ok"), nil })
+	cmd := r.Start("load", Background, func(context.Context) (tea.Msg, error) { return result("ok"), nil })
 	if !r.Busy() || r.Locked() {
 		t.Fatalf("Busy=%v Locked=%v, want busy and unlocked", r.Busy(), r.Locked())
 	}
@@ -31,8 +31,8 @@ func TestReadDoesNotLock(t *testing.T) {
 
 func TestWriteLocksAndFailureIsKept(t *testing.T) {
 	r := New()
-	r.Start("load", false, func(context.Context) (tea.Msg, error) { return nil, nil })
-	cmd := r.Start("move", true, func(context.Context) (tea.Msg, error) { return nil, errors.New("refused") })
+	r.Start("load", Background, func(context.Context) (tea.Msg, error) { return nil, nil })
+	cmd := r.Start("move", Write, func(context.Context) (tea.Msg, error) { return nil, errors.New("refused") })
 	if !r.Locked() {
 		t.Fatal("a running write did not lock")
 	}
@@ -58,7 +58,7 @@ func TestWriteLocksAndFailureIsKept(t *testing.T) {
 
 func TestStepsAreReportedWhileTheOperationRuns(t *testing.T) {
 	r := New()
-	cmd := r.StartSteps("copy", true, 0, func(_ context.Context, report func(string)) (tea.Msg, error) {
+	cmd := r.StartSteps("copy", Write, 0, func(_ context.Context, report func(string)) (tea.Msg, error) {
 		report("first")
 		report("second")
 		return nil, nil
@@ -71,4 +71,23 @@ func TestStepsAreReportedWhileTheOperationRuns(t *testing.T) {
 		t.Fatalf("step = %q, want the last one reported", cur.Step())
 	}
 	r.Finish(done)
+}
+
+func TestAReadTheUserWaitsOnLocks(t *testing.T) {
+	r := New()
+	r.Start("names", Background, func(context.Context) (tea.Msg, error) { return nil, nil })
+	if r.Locked() {
+		t.Fatal("a read in the background locked")
+	}
+	cmd := r.Start("open", Wait, func(context.Context) (tea.Msg, error) { return nil, nil })
+	if !r.Locked() || r.Count() != 2 || r.Last() != 2 {
+		t.Fatalf("Locked=%v Count=%d Last=%d, want a lock, 2 and 2", r.Locked(), r.Count(), r.Last())
+	}
+	if cur, _ := r.Current(); cur.Label != "open" || !cur.Locks() {
+		t.Fatalf("Current = %+v, want the read that locks", cur)
+	}
+	r.Finish(cmd().(DoneMsg))
+	if r.Locked() {
+		t.Fatal("still locked after the read ended")
+	}
 }

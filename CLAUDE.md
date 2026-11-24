@@ -97,7 +97,13 @@ into this repository.
   `internal/hit` reports gestures against those IDs. Give every layer an explicit `Z`:
   layers that share a z-order are drawn in no fixed order.
 - Every provider call goes through `Model.start` in `internal/ui`, never straight from
-  `Update`. Reads leave input free; writes lock it until they finish.
+  `Update`, with a mode from `internal/ops`. `ops.Wait` is a read the user asked for and
+  `ops.Write` is a change: both refuse input until they end. `ops.Background` is any
+  other read and leaves input free. A queue is read in the background, and the queue
+  view refuses input while a read of it is running (`queue.loads`).
+- While input is refused (`Model.blocked`) the frame is drawn grey above the status bar,
+  and the status bar names the request. Check `blocked` in one place for each kind of
+  input, at the top of its case in `Model.update`, and not in the handlers under it.
 - A frame must be exactly the size of the pane. `TestFrameMatchesPaneAtEverySize` checks
   this; extend it when a view is added.
 - An instance action runs through `Model.doAction`, which locks input and shows the

@@ -49,9 +49,15 @@ type queue struct {
 	// that has one, by the index of the bucket.
 	infoAt  map[int][2]int
 	loading bool
-	// pending is how many reads started by loadQueue have not come back.
-	// The queue view takes no input and is drawn grey until it is zero.
-	pending  int
+	// loads are the operations reading the queue that have not ended, by
+	// their ID. The queue view takes no input and is drawn grey until there
+	// are none.
+	loads map[int]bool
+	// newest is the number of the read started last for each source of
+	// tickets: the queue's own query, or a bucket's. An answer to an older
+	// read is dropped, since two reads may end in either order.
+	newest   map[int]int
+	reads    int
 	loadedAt time.Time
 	// offset is the index of the first ticket drawn in a table.
 	offset int
@@ -69,6 +75,18 @@ type queue struct {
 	cols []column
 	flex int
 }
+
+// reading numbers a read of one source of the queue's tickets that is
+// about to start.
+func (q *queue) reading(src int) int {
+	q.reads++
+	q.newest[src] = q.reads
+	return q.reads
+}
+
+// stale reports whether the answer to read number seq of a source has been
+// overtaken by a later read of it.
+func (q *queue) stale(src, seq int) bool { return seq < q.newest[src] }
 
 // fromQueue marks a ticket that the queue's own query returned.
 const fromQueue = arrange.FromQueue

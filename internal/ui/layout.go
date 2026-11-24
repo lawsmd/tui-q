@@ -291,26 +291,28 @@ const statusRows = 2
 func (m *Model) floor() int { return m.h - statusRows }
 
 // statusBar is the last rows: a rule across the pane, then a line that
-// shows the running operation, or the last failure until it is clicked
-// away, or a summary of what is on screen. The rule takes the colour of the
-// line under it.
+// shows the operation the user is waiting on, or the last failure until it
+// is clicked away, or an operation running in the background, or a summary
+// of what is on screen. The rule takes the colour of the line under it.
 func (m *Model) statusBar(w int) *lipgloss.Layer {
 	s := m.styles
 	var left string
 	style, rule := s.Status, s.StatusRule
-	if cur, ok := m.ops.Current(); ok {
+	cur, running := m.ops.Current()
+	failed, failure := m.ops.Failed()
+	if running && (m.blocked() || !failure) {
 		style, rule = s.StatusBusy, s.StatusRuleBusy
 		left = m.spin.View() + " " + cur.Label
 		if step := cur.Step(); step != "" {
 			left += ": " + step
 		}
-		if cur.Write {
+		if m.blocked() {
 			left += " (input locked)"
 		}
 		if others := m.ops.Count() - 1; others > 0 {
 			left += fmt.Sprintf("  +%d more", others)
 		}
-	} else if failed, ok := m.ops.Failed(); ok {
+	} else if failure {
 		style, rule = s.StatusError, s.StatusRuleError
 		left = "Failed: " + failed.Err.Error() + "  (click to dismiss)"
 	} else if m.notice != "" {
