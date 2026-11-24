@@ -81,11 +81,26 @@ type Provider struct {
 
 	mu      sync.Mutex
 	tickets []ticket.Ticket
+	// touches holds the latest change made by the first of People to each
+	// ticket, by ticket ID.
+	touches map[string]touch
+}
+
+// touch is one change the fake keeps for Recent.
+type touch struct {
+	at         time.Time
+	kind, what string
 }
 
 // New returns a Provider holding a fresh copy of the fixtures.
 func New(delay time.Duration) *Provider {
-	return &Provider{Delay: delay, tickets: fixtures()}
+	return &Provider{Delay: delay, tickets: fixtures(), touches: fixtureTouches()}
+}
+
+// touch records a change made to a ticket by the first of People. The
+// caller holds mu.
+func (p *Provider) touch(id, kind, what string) {
+	p.touches[id] = touch{at: time.Now(), kind: kind, what: what}
 }
 
 func (p *Provider) wait(ctx context.Context) error {
@@ -261,6 +276,7 @@ func (p *Provider) Transition(ctx context.Context, id string, tr ticket.Transiti
 		}
 		t.Fields[FieldResolution] = resolution
 	}
+	p.touch(id, provider.ChangeStatus, t.Status+" → "+tr.To)
 	t.Status = tr.To
 	t.Updated = time.Now()
 	return nil
@@ -280,6 +296,7 @@ func (p *Provider) Assign(ctx context.Context, id, userID string) error {
 	if err != nil {
 		return err
 	}
+	p.touch(id, provider.ChangeAssignee, "Assignee "+t.Assignee+" → "+userID)
 	t.Assignee = userID
 	t.Updated = time.Now()
 	return nil
@@ -301,6 +318,7 @@ func (p *Provider) UpdateField(ctx context.Context, id, field string, v ticket.V
 	}
 	switch field {
 	case ticket.FieldAssignee:
+		p.touch(id, provider.ChangeAssignee, "Assignee "+t.Assignee+" → "+v.ID)
 		t.Assignee = v.ID
 	case ticket.FieldTitle:
 		t.Title = v.String()
@@ -313,6 +331,9 @@ func (p *Provider) UpdateField(ctx context.Context, id, field string, v ticket.V
 	default:
 		if t.Fields == nil {
 			t.Fields = map[string]ticket.Value{}
+		}
+		if field == "labels" {
+			p.touch(id, provider.ChangeTags, "Labels "+t.Fields[field].String()+" → "+v.String())
 		}
 		t.Fields[field] = v
 	}
@@ -416,4 +437,23 @@ func (p *Provider) Suggest(ctx context.Context, _, field, query string) ([]strin
 // FieldLabels has nothing to add: the fixtures have no platform names.
 func (p *Provider) FieldLabels(context.Context) (map[string]string, error) {
 	return nil, nil
+}
+
+// The provider lists the tickets changed lately.
+var _ provider.RecentReader = (*Provider)(nil)
+
+// Recent returns the tickets with a change kept since the given time.
+func (p *Provider) Recent(ctx context.Context, since time.Time) ([]provider.Touch, error) {
+	if err := p.wait(ctx); err != nil {
+		return nil, err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []provider.Touch
+	for _, t := range p.tickets {
+		if tc, ok := p.touches[t.ID]; ok && !tc.at.Before(since) {
+			out = append(out, provider.Touch{Ticket: t, At: tc.at, Kind: tc.kind, What: tc.what})
+		}
+	}
+	return out, nil
 }

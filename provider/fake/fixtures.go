@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"time"
 
+	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
 )
 
@@ -71,6 +72,18 @@ func fixtures() []ticket.Ticket {
 		out = append(out, t)
 	}
 	return out
+}
+
+// fixtureTouches are the changes the first of People made to the fixtures
+// before the demo starts.
+func fixtureTouches() map[string]touch {
+	now := time.Now()
+	return map[string]touch{
+		"DEMO-104": {now.Add(-2 * time.Hour), provider.ChangeStatus, "Open → In progress"},
+		"DEMO-110": {now.Add(-26 * time.Hour), provider.ChangeAssignee, "Assignee – → sam"},
+		"DEMO-106": {now.Add(-50 * time.Hour), provider.ChangeTags, "Labels → mobile"},
+		"DEMO-112": {now.Add(-4 * 24 * time.Hour), provider.ChangeStatus, "In progress → Done"},
+	}
 }
 
 // PictureTicket is the fixture ticket that has a picture attached.

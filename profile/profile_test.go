@@ -118,3 +118,40 @@ order = true
 		t.Errorf("InOrder = %v, %v", p.Queues[0].InOrder(), p.Queues[1].InOrder())
 	}
 }
+
+func TestRecentQueue(t *testing.T) {
+	p, err := Parse(`
+[provider]
+kind = "fake"
+
+[[queue]]
+name = "Recent"
+recent = true
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := p.Queues[0]
+	if q.Days != DefaultRecentDays || q.PageSize != DefaultRecentPageSize || q.InOrder() {
+		t.Errorf("days %d, page size %d, in order %v", q.Days, q.PageSize, q.InOrder())
+	}
+	if len(q.Buckets) != 1 || q.Buckets[0].PageSize != DefaultRecentPageSize || len(q.Buckets[0].Values) != 0 {
+		t.Errorf("buckets %+v", q.Buckets)
+	}
+	if q.Columns[0] != "touched" {
+		t.Errorf("columns %v", q.Columns)
+	}
+
+	for _, bad := range []string{
+		"recent = true\nquery = \"x\"",
+		"recent = true\nlayout = \"board\"",
+		"recent = true\ndays = -1",
+		"recent = true\n[[queue.bucket]]\nname = \"b\"\nvalues = [\"x\"]",
+		"query = \"x\"\npage_size = 5",
+	} {
+		_, err := Parse("[provider]\nkind = \"fake\"\n[[queue]]\nname = \"Q\"\n" + bad)
+		if err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/lawsmd/tui-q/internal/arrange"
 	"github.com/lawsmd/tui-q/profile"
 	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
@@ -45,7 +46,7 @@ func check(w io.Writer, prof *profile.Profile, prov provider.Provider) error {
 	for _, q := range prof.Queues {
 		var tickets []ticket.Ticket
 		if !q.OwnQueries() {
-			found, err := prov.Search(ctx, q.Query)
+			found, err := arrange.Own(ctx, prov, &q)
 			if err != nil {
 				return fmt.Errorf("queue %q: %w", q.Name, err)
 			}

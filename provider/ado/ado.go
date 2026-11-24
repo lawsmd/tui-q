@@ -58,6 +58,8 @@ type Provider struct {
 	// fields maps a profile field name to a field reference name.
 	fields map[string]string
 	meta   meta
+	// seen holds what Recent learned from the history of each work item.
+	seen seenCache
 }
 
 // New builds a Provider from a profile's [provider] section. base_url is

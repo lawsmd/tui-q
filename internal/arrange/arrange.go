@@ -22,7 +22,8 @@ const NoLane = "(none)"
 // says where each ticket came from: the index of the bucket whose own query
 // loaded it, or FromQueue. A ticket past the end of from counts as
 // FromQueue. A ticket loaded by a bucket's own query is in that bucket, and
-// any other goes in the first bucket whose values it matches.
+// any other goes in the first bucket whose values it matches, or that has
+// no values.
 func Sections(cfg *profile.Queue, tickets []ticket.Ticket, from []int) [][]int {
 	sections := make([][]int, len(cfg.Buckets)+1)
 	for i, t := range tickets {
@@ -33,6 +34,10 @@ func Sections(cfg *profile.Queue, tickets []ticket.Ticket, from []int) [][]int {
 			for j, b := range cfg.Buckets {
 				if b.Query != "" {
 					continue
+				}
+				if len(b.Values) == 0 {
+					at = j
+					break
 				}
 				value := t.Field(b.Field).String()
 				if slices.ContainsFunc(b.Values, func(v string) bool { return strings.EqualFold(v, value) }) {

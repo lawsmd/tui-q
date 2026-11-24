@@ -60,20 +60,42 @@ type Queue struct {
 	// Order set to false keeps the queue out of "tq order". Read it
 	// through InOrder.
 	Order *bool `toml:"order"`
+	// Recent makes the queue a list of the tickets the user acted on
+	// lately, the latest first, in place of the results of a query: the
+	// tickets whose status, tags or assignee the user changed, and the
+	// ones assigned to the user or taken from them. It needs a platform
+	// that can read the history of a ticket.
+	Recent bool `toml:"recent"`
+	// Days is how far back a recent queue looks.
+	Days int `toml:"days"`
+	// PageSize is how many tickets a recent queue shows at once.
+	PageSize int `toml:"page_size"`
 }
 
 // InOrder reports whether "tq order" lists the queue. It does unless the
-// profile says order = false.
+// profile says order = false. A recent queue is left out unless the
+// profile says order = true.
 func (q *Queue) InOrder() bool {
-	return q.Order == nil || *q.Order
+	if q.Order == nil {
+		return !q.Recent
+	}
+	return *q.Order
 }
+
+// Defaults of a recent queue.
+const (
+	DefaultRecentDays     = 30
+	DefaultRecentPageSize = 20
+)
 
 // DefaultPageSize is the page size of a bucket that has its own query and
 // names no size.
 const DefaultPageSize = 10
 
 // Bucket is one section of a table. It holds the tickets of the queue
-// whose field has one of the values, or the tickets of its own query.
+// whose field has one of the values, or the tickets of its own query. A
+// bucket with neither holds every ticket; only the loader makes one, for a
+// recent queue.
 type Bucket struct {
 	Name string `toml:"name"`
 	// Field defaults to the status.
@@ -227,6 +249,15 @@ func (p *Profile) finish() error {
 		default:
 			return fmt.Errorf("profile: queue %q: layout must be %q or %q", q.Name, LayoutTable, LayoutBoard)
 		}
+		if q.Recent {
+			if err := q.finishRecent(); err != nil {
+				return err
+			}
+			continue
+		}
+		if q.Days != 0 || q.PageSize != 0 {
+			return fmt.Errorf("profile: queue %q: days and page_size are for a recent queue", q.Name)
+		}
 		if len(q.Columns) == 0 {
 			q.Columns = []string{ticket.FieldKey, ticket.FieldTitle, ticket.FieldStatus, ticket.FieldAssignee}
 		}
@@ -266,6 +297,33 @@ func (p *Profile) finish() error {
 	if len(p.Ticket.Sidebar) == 0 {
 		p.Ticket.Sidebar = []string{ticket.FieldStatus, ticket.FieldType, ticket.FieldAssignee, ticket.FieldPriority}
 	}
+	return nil
+}
+
+// finishRecent checks a recent queue and gives it one bucket that holds
+// every ticket, shown a page at a time.
+func (q *Queue) finishRecent() error {
+	switch {
+	case q.Query != "":
+		return fmt.Errorf("profile: queue %q: a recent queue has no query", q.Name)
+	case q.Layout != LayoutTable:
+		return fmt.Errorf("profile: queue %q: a recent queue is a table", q.Name)
+	case len(q.Buckets) > 0 || q.HideUnmatched:
+		return fmt.Errorf("profile: queue %q: a recent queue has no buckets", q.Name)
+	case q.Days < 0 || q.PageSize < 0:
+		return fmt.Errorf("profile: queue %q: days and page_size cannot be negative", q.Name)
+	}
+	if q.Days == 0 {
+		q.Days = DefaultRecentDays
+	}
+	if q.PageSize == 0 {
+		q.PageSize = DefaultRecentPageSize
+	}
+	if len(q.Columns) == 0 {
+		q.Columns = []string{provider.FieldTouched, ticket.FieldKey, ticket.FieldTitle, provider.FieldChange, ticket.FieldStatus, ticket.FieldAssignee}
+	}
+	q.Buckets = []Bucket{{Name: q.Name, PageSize: q.PageSize}}
+	q.HideUnmatched = true
 	return nil
 }
 

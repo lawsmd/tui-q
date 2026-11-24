@@ -126,6 +126,10 @@ A profile is a TOML file naming the platform, the queues, and the fields a ticke
 `cmd/tq/profile.toml` is the demo. Set `TQ_PROFILE` to the path of another file to load it
 in place of the built-in one.
 
+A queue with `recent = true` lists the tickets you acted on lately, the latest first, 20
+to a page: the ones whose status, tags or assignee you changed, and the ones assigned to
+you or taken from you. The demo's `Recent` tab is one. `docs/plan.md` gives the keys.
+
 ## `tq LINK`
 
 ```

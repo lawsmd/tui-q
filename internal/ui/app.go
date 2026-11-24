@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lawsmd/tui-q/ext"
+	"github.com/lawsmd/tui-q/internal/arrange"
 	"github.com/lawsmd/tui-q/internal/attach"
 	"github.com/lawsmd/tui-q/internal/browser"
 	"github.com/lawsmd/tui-q/internal/drafts"
@@ -318,8 +319,18 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 		spin:        spinner.New(spinner.WithSpinner(spinner.MiniDot)),
 	}
 	m.jump = newJump(m.styles)
+	_, recent := prov.(provider.RecentReader)
 	for i := range prof.Queues {
+		// A platform that cannot read history has no recent queue.
+		if prof.Queues[i].Recent && !recent {
+			continue
+		}
 		m.queues = append(m.queues, &queue{cfg: &prof.Queues[i], loads: map[int]bool{}, newest: map[int]int{}})
+	}
+	if len(m.queues) == 0 {
+		// Every queue is a recent one: show the first, which says why it
+		// cannot load.
+		m.queues = append(m.queues, &queue{cfg: &prof.Queues[0], loads: map[int]bool{}, newest: map[int]int{}})
 	}
 	return m
 }
@@ -395,10 +406,10 @@ func (m *Model) loadQueue(i int) tea.Cmd {
 	q.loading = true
 	var cmds []tea.Cmd
 	if !q.cfg.OwnQueries() {
-		query := q.cfg.Query
+		cfg := q.cfg
 		seq := q.reading(fromQueue)
 		cmds = append(cmds, m.start("Loading "+q.cfg.Name, ops.Background, func(ctx context.Context) (tea.Msg, error) {
-			tickets, err := m.prov.Search(ctx, query)
+			tickets, err := arrange.Own(ctx, m.prov, cfg)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", q.cfg.Name, err)
 			}

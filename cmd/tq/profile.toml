@@ -12,6 +12,12 @@ query = "status=Open and assignee="
 columns = ["key", "title", "type", "priority", "created"]
 
 [[queue]]
+name = "Recent"
+# The tickets you changed the status, labels or assignee of, or that were
+# assigned to you or taken from you, the latest first, 20 to a page.
+recent = true
+
+[[queue]]
 name = "In progress"
 query = "status=In progress"
 columns = ["key", "title", "assignee", "priority", "labels", "updated"]

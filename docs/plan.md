@@ -85,6 +85,17 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   A bucket with `about` has an `(i)` mark at the right end of its heading, left of the
   page buttons. With the mouse over the mark,
   a box shows the `about` text: which tickets the bucket holds and which it leaves out.
+- `recent = true` on a `[[queue]]`: the queue lists the tickets the user acted on lately,
+  the latest first, in place of the results of a query. A ticket counts when the user
+  changed its status, added or removed a tag, or changed its assignee, or when anyone
+  assigned it to the user or took it from them. `days` sets how far back it looks (30
+  unless given) and `page_size` how many tickets a page shows (20 unless given). The
+  columns `touched` and `change` give when and what the last such change was;
+  `touched` keeps its time when the table shows dates without times. The
+  platform must implement `provider.RecentReader`; on one that does not, the tab is left
+  out. `tq order` leaves the queue out unless it sets `order = true`. Azure DevOps reads
+  the history of each work item changed in that time that the user ever changed or was
+  assigned, at most 400 of them, the ones changed most lately.
 - `[ticket]`: main fields and sidebar fields in order; whether comments are shown;
   whether pictures are drawn in the ticket (`pictures`, off unless set).
 - `[fields.<name>]`: platform field ID, type, label. A field with no label is shown
@@ -245,6 +256,11 @@ key or a number that the provider's `Resolve` reads. `ui.Options.Ticket` carries
 The model then loads the account, the field names and that ticket, and never a queue. The
 top row holds the ticket's key and the refresh button, and no key or layer leads to a
 queue or to another ticket.
+
+Also outside the phases: a queue with `recent = true` lists the tickets the user acted on
+lately, through `provider.RecentReader`. Azure DevOps and the fake provider implement it.
+Jira does not yet; the next step is a Jira `Recent` that reads the changelog of the
+issues the user changed or was assigned in the period.
 
 ## Verification
 

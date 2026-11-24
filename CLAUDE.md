@@ -148,6 +148,9 @@ into this repository.
   never text. `Model.Update` passes the pictures every message it has no use for
   (`picturePass`). `TestPictureFitsEveryPane` checks the rows across pane sizes and scroll
   positions.
+- A platform that can read the history of a ticket implements `provider.RecentReader`,
+  which a queue with `recent = true` loads through `arrange.Own`. The queue is one bucket
+  that holds every ticket, made by the profile loader, so it pages as any bucket does.
 - A profile never holds a secret. It names the environment variables that do.
 - `tq order` tells an LLM agent the order to work in. It prints key, status and title for
   each ticket. Do not add other fields, full ticket loads or writes to it: the agent reads

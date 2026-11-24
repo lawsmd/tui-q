@@ -186,7 +186,13 @@ func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func newTest(t *testing.T, f *fakeServer) *Provider {
 	t.Helper()
-	srv := httptest.NewServer(f)
+	return newTestWith(t, f)
+}
+
+// newTestWith builds a Provider that talks to any test handler.
+func newTestWith(t *testing.T, h http.Handler) *Provider {
+	t.Helper()
+	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return NewProvider(NewClient(srv.URL+"/", PAT("secret")), "DEMO", testFields)
 }

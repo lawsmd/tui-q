@@ -126,7 +126,7 @@ func (s orderSection) size(unit string) string {
 func orderSections(ctx context.Context, prov provider.Provider, q *profile.Queue, limit int) ([]orderSection, error) {
 	var own []ticket.Ticket
 	if !q.OwnQueries() {
-		found, err := prov.Search(ctx, q.Query)
+		found, err := arrange.Own(ctx, prov, q)
 		if err != nil {
 			return nil, err
 		}

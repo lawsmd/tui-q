@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
 )
 
@@ -44,7 +45,9 @@ func (m *Model) cell(t ticket.Ticket, name string) string {
 	if m.person(name) && m.prefs.Column(name).FirstName {
 		return firstNames(value)
 	}
-	if m.prefs.DateOnly {
+	// A recent queue is in the order of the time it shows, so that time
+	// keeps its hour and minute.
+	if m.prefs.DateOnly && name != provider.FieldTouched {
 		return dateOnly(value)
 	}
 	return value

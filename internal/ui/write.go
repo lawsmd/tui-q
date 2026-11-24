@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lawsmd/tui-q/internal/ops"
+	"github.com/lawsmd/tui-q/provider"
 	"github.com/lawsmd/tui-q/ticket"
 )
 
@@ -212,9 +213,14 @@ func (m *Model) findUsers(t ticket.Ticket, query string, x, y int) tea.Cmd {
 func (m *Model) replaceTicket(t ticket.Ticket) {
 	for _, q := range m.queues {
 		for i := range q.tickets {
-			if q.tickets[i].ID == t.ID {
-				q.tickets[i] = t
+			if q.tickets[i].ID != t.ID {
+				continue
 			}
+			if q.cfg.Recent {
+				q.tickets[i] = keepTouch(t, q.tickets[i])
+				continue
+			}
+			q.tickets[i] = t
 		}
 	}
 	for _, tab := range m.tabs {
@@ -222,6 +228,22 @@ func (m *Model) replaceTicket(t ticket.Ticket) {
 			tab.set(t)
 		}
 	}
+}
+
+// keepTouch returns t with the fields a recent queue set on old, which a
+// ticket read from the platform lacks.
+func keepTouch(t, old ticket.Ticket) ticket.Ticket {
+	fields := make(map[string]ticket.Value, len(t.Fields)+2)
+	for k, v := range t.Fields {
+		fields[k] = v
+	}
+	for _, name := range []string{provider.FieldTouched, provider.FieldChange} {
+		if v, ok := old.Fields[name]; ok {
+			fields[name] = v
+		}
+	}
+	t.Fields = fields
+	return t
 }
 
 // withField returns a copy of t with one field changed, for showing a
