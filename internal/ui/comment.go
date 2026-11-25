@@ -537,7 +537,7 @@ func (m *Model) composerKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "esc":
 		m.focusComposer(false)
 		return nil, true
-	case "ctrl+s":
+	case "ctrl+s", "ctrl+enter":
 		return m.sendComment(), true
 	case "ctrl+k":
 		if cm := m.commenter(); cm != nil && len(cm.CommentKinds()) > 1 {

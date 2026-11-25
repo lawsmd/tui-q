@@ -663,8 +663,18 @@ func TestSendingAComment(t *testing.T) {
 		t.Fatalf("the open ticket has %d comments, notice %q", got, m.notice)
 	}
 	// An empty box is ready for the next comment.
-	if next := eds.box(t); next == b || next.closed || next.cfg.Markdown != "" || next.focused {
+	next := eds.box(t)
+	if next == b || next.closed || next.cfg.Markdown != "" || next.focused {
 		t.Fatalf("the box after sending holds %q (closed=%v focused=%v)", next.cfg.Markdown, next.closed, next.focused)
+	}
+
+	// ctrl+enter sends too.
+	send(t, m, key('c'))
+	next.text = "Released"
+	send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	comments = stored(t, m, id).Comments
+	if len(comments) != before+2 || comments[len(comments)-1].Body != "Released" {
+		t.Fatalf("after ctrl+enter: %d comments, want %d", len(comments), before+2)
 	}
 }
 

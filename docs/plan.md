@@ -188,9 +188,9 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   keyboard.
 - `c`, a click in the box or a click on the top of its border gives it the keyboard, and `esc` or a
   click elsewhere takes it away. While the box has the keyboard every key but `esc`,
-  `ctrl+s` and `ctrl+k` is the editor's, `ctrl+c` included, which copies.
+  `ctrl+s`, `ctrl+enter` and `ctrl+k` is the editor's, `ctrl+c` included, which copies.
 - When the editor cannot open, as under tmux, the border says why and `c` tries again.
-- `ctrl+s` or the `send` button posts the comment as a write. The provider names the
+- `ctrl+s`, `ctrl+enter` or the `send` button posts the comment as a write. The provider names the
   format it takes (`provider.Commenter`), and the editor converts its Markdown to that
   format when the comment is sent. When the write fails the box and its text stay.
 - A platform can have kinds of comment, such as a public reply and an internal note.

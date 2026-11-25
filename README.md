@@ -23,7 +23,7 @@ demo provider. Platform providers, boards with drag and drop, and writes are pla
 Every ticket view has a comment box under the heading of the comments, beside the newest.
 It is a grey border named "Write a comment" around an editor, and the editor holds the
 text of the comment and nothing else. `c` or a click in the box gives it the keyboard,
-and it grows while it is written in. `ctrl+s` or `send` on the border
+and it grows while it is written in. `ctrl+s`, `ctrl+enter` or `send` on the border
 posts the comment, `esc` gives the keyboard back to the ticket, and what was typed is
 kept as a draft until it is sent or discarded.
 
