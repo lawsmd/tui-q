@@ -31,6 +31,7 @@ type config struct {
 	profileText string
 	actions     []ext.Action
 	sections    []ext.Section
+	fields      []ext.Fields
 }
 
 // Option changes how Run behaves.
@@ -53,6 +54,13 @@ func WithActions(actions ...ext.Action) Option {
 // of the ticket view, in the order given.
 func WithSections(sections ...ext.Section) Option {
 	return func(c *config) { c.sections = append(c.sections, sections...) }
+}
+
+// WithFields adds the instance's own fields to the sidebar of the ticket
+// view, under the profile's sidebar fields, for the tickets each applies
+// to.
+func WithFields(fields ...ext.Fields) Option {
+	return func(c *config) { c.fields = append(c.fields, fields...) }
 }
 
 // usage is printed by "tq help" and with the error for an unknown command.
@@ -116,7 +124,7 @@ func Run(opts ...Option) error {
 	}
 	// Settings changed in the interface are kept per site. Without a place
 	// to keep them they last until the program exits.
-	uiOpts := ui.Options{Actions: cfg.actions, Sections: cfg.sections}
+	uiOpts := ui.Options{Actions: cfg.actions, Sections: cfg.sections, Fields: cfg.fields}
 	if command != "" {
 		id, err := ticketArg(prov, command, args)
 		if err != nil {

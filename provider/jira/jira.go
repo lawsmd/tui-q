@@ -55,10 +55,13 @@ type Provider struct {
 	// edit marks the issues whose edit screen has been read.
 	// media remembers, per attachment ID, the ID the media store knows the
 	// file by, and an empty one for an attachment that has none.
-	mu    sync.Mutex
-	meta  map[string]map[string]ticket.FieldSpec
-	edit  map[string]bool
-	media map[string]string
+	// levels remembers, per issue, the level of its type in Jira's
+	// hierarchy, which says what its parent can be.
+	mu     sync.Mutex
+	meta   map[string]map[string]ticket.FieldSpec
+	edit   map[string]bool
+	media  map[string]string
+	levels map[string]int
 }
 
 // New builds a Provider from a profile's [provider] section. The
@@ -93,7 +96,14 @@ func (p *Provider) Resolve(input string) (string, error) {
 
 // NewProvider builds a Provider around an existing Client.
 func NewProvider(client *Client, fields map[string]string) *Provider {
-	return &Provider{client: client, fields: fields, meta: map[string]map[string]ticket.FieldSpec{}, edit: map[string]bool{}, media: map[string]string{}}
+	return &Provider{
+		client: client,
+		fields: fields,
+		meta:   map[string]map[string]ticket.FieldSpec{},
+		edit:   map[string]bool{},
+		media:  map[string]string{},
+		levels: map[string]int{},
+	}
 }
 
 // Client returns the HTTP client, for instance code that needs endpoints
@@ -205,6 +215,9 @@ func (p *Provider) Get(ctx context.Context, id string) (ticket.Ticket, error) {
 	}
 	t := p.toTicket(is, p.mediaIDs(ctx, is))
 	t.Editable = p.specs(t.ID, is.EditMeta.Fields, true)
+	p.mu.Lock()
+	p.levels[t.ID] = hierarchyLevel(is.Fields["issuetype"])
+	p.mu.Unlock()
 	return t, nil
 }
 
@@ -597,7 +610,7 @@ func (p *Provider) toTicket(is issue, byMedia map[string]ticket.Attachment) tick
 
 // decode turns any Jira field value into a Value. Jira fields come as
 // strings, numbers, objects naming themselves in one of a few keys, rich
-// text documents, or arrays of any of those.
+// text documents, issues, or arrays of any of those.
 func decode(raw json.RawMessage) ticket.Value {
 	if len(raw) == 0 {
 		return ticket.Value{}
@@ -618,6 +631,9 @@ func decode(raw json.RawMessage) ticket.Value {
 	case map[string]any:
 		if v["type"] == "doc" {
 			return ticket.Text(adfToMarkdown(raw, files{}))
+		}
+		if ref, ok := issueRef(v); ok {
+			return ref
 		}
 	}
 	return ticket.Text(scalar(v))

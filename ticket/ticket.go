@@ -236,6 +236,11 @@ const (
 	// KindTags is a list of free words.
 	KindTags = "tags"
 	KindUser = "user"
+	// KindTicket is a field that holds another ticket, such as a parent.
+	// Its value has the ID of that ticket, and for Text its key and title.
+	// It is set to one of the tickets a search finds: a provider that
+	// gives a field this kind implements provider.Finder.
+	KindTicket = "ticket"
 )
 
 // FieldSpec describes one field a ticket or a transition accepts.

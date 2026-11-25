@@ -46,7 +46,7 @@ into this repository.
 |---|---|
 | `cmd/tq` | stock binary and the demo profile |
 | `tuiq` | `tuiq.Run`, the one entry point |
-| `ext` | what an instance passes to `tuiq.Run` to add behaviour: `ext.Action` so far |
+| `ext` | what an instance passes to `tuiq.Run` to add behaviour: `ext.Action`, `ext.Section` and `ext.Fields` so far |
 | `ticket` | platform-neutral ticket model |
 | `provider` | `Provider` interface and registry |
 | `provider/fake` | in-memory provider with fixture tickets |
@@ -108,6 +108,14 @@ into this repository.
   listed in `hot` (`internal/ui/hover.go`). A new button, mark or clickable label takes
   the effect by having its kind added there, and needs nothing where it is drawn. Tabs,
   rows and cards are left out on purpose.
+- A left drag that begins on anything but a ticket tab, a card or the edge of a column
+  selects text (`internal/ui/selection.go`). The selection is held in cells of the window:
+  `Model.render` draws them in reverse video, and the release copies what the last frame
+  showed in them (`Model.selected`). No view keeps a plain copy of its text for this.
+  `render` leaves alone the cells of the comment box and of a picture
+  (`Model.imageRects`), since a cell written under an image wipes it. Anything new that
+  can be dragged is given its drag in `startDrag`, before the selection takes it, and
+  anything new drawn as an image is added to `imageRects`.
 - Bubble Tea calls `View` after every message, and the terminal sends a message for every
   cell the mouse crosses, so what one message costs is paid many times a second.
   `compose` gathers the layers and gives them to the root in one `NewLayer` call: Lip
@@ -157,6 +165,14 @@ into this repository.
   `provider/ado` lists none yet. With `links = true` in the profile the sidebar lists
   them (`linkLines`), and a click on a key opens the ticket through `Model.openTicket`,
   as a click on a row does.
+- A field that holds another ticket has the kind `ticket.KindTicket`, and its value has
+  the ID of that ticket and its key and title as the text. A platform that gives a field
+  this kind implements `provider.Finder`. The interface sets the field from the tag box
+  (`picker.one`), which then lists the tickets `Find` returns and writes the one picked
+  at once. `provider/jira` gives the kind to the parent alone.
+- The sidebar fields of a ticket are the profile's and then the instance's that apply to
+  it (`ext.Fields`, `ticketTab.sideFields`). Read them through `sideFields`, never from
+  `prof.Ticket.Sidebar`.
 - Started on one ticket (`Model.only`), the interface loads no queue. It has ticket tabs
   and the jump box, and its last tab cannot be closed (`lastTab`): there is no queue to
   show in its place.

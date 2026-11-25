@@ -39,6 +39,10 @@ func (r rawMeta) kind() string {
 		return ticket.KindNumber
 	case "date":
 		return ticket.KindText
+	case "issuelink":
+		if s.System == parentField {
+			return ticket.KindTicket
+		}
 	case "string":
 		if strings.HasSuffix(s.Custom, ":textarea") || s.System == "description" || s.System == "environment" {
 			return ticket.KindRichText
@@ -230,6 +234,16 @@ func encodeAs(spec ticket.FieldSpec, v ticket.Value) (any, error) {
 			return nil, nil
 		}
 		return map[string]string{"accountId": v.ID}, nil
+	case ticket.KindTicket:
+		// A value with no ID starts with the key, as one read from Jira does.
+		key := v.ID
+		if key == "" {
+			key, _, _ = strings.Cut(strings.TrimSpace(v.Text), " ")
+		}
+		if key == "" {
+			return nil, nil
+		}
+		return map[string]string{"key": key}, nil
 	}
 	return nil, fmt.Errorf("this kind of field cannot be edited here")
 }

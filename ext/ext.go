@@ -60,6 +60,19 @@ type Run struct {
 	Progress func(step string)
 }
 
+// Fields are fields an instance adds to the sidebar of the ticket view for
+// some tickets. They are drawn under the profile's sidebar fields, in the
+// order given, and are shown and changed as those are. A field the sidebar
+// already has is not drawn again.
+type Fields struct {
+	// Names are the fields, by the names the profile gives them. A field
+	// of the platform has to be in the profile's [fields] to be read.
+	Names []string
+	// Applies reports whether the fields are shown for a ticket. Nil shows
+	// them for every ticket.
+	Applies func(t ticket.Ticket) bool
+}
+
 // Section is a block of lines an instance adds to the top of the sidebar of
 // the ticket view, above the profile's fields. It is read each time the
 // ticket is loaded and after every change made to it.

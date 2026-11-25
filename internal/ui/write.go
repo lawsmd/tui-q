@@ -377,12 +377,16 @@ func (tab *ticketTab) editable(name string) bool {
 	case ticket.KindRichText:
 		// Writing rich text from here would drop its formatting.
 		return false
+	case ticket.KindTicket:
+		// Picked from a search, which no form has.
+		return true
 	}
 	return formable(spec)
 }
 
 // editField starts the edit of one field of an open ticket: a menu for a
-// field with a fixed set of values, and a form for the rest.
+// field with a fixed set of values, the search box for a list of tags or
+// for a field that holds a ticket, and a form for the rest.
 func (m *Model) editField(tab *ticketTab, name string, x, y int) tea.Cmd {
 	t := tab.t
 	switch name {
@@ -399,7 +403,7 @@ func (m *Model) editField(tab *ticketTab, name string, x, y int) tea.Cmd {
 	}
 	spec.Label = m.label(name)
 	current := t.Field(name)
-	if spec.Kind == ticket.KindTags {
+	if spec.Kind == ticket.KindTags || spec.Kind == ticket.KindTicket {
 		return m.openPicker(tab, name)
 	}
 	if spec.Kind == ticket.KindSelect {

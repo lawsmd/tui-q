@@ -51,6 +51,10 @@ var Resolutions = []string{"Fixed", "Won't fix"}
 // FieldResolution is the field the transition to Done requires.
 const FieldResolution = "resolution"
 
+// FieldParent is the field that holds the parent of a ticket. Any other
+// fixture ticket can be the parent.
+const FieldParent = "parent"
+
 func options(names []string) []ticket.Option {
 	out := make([]ticket.Option, len(names))
 	for i, name := range names {
@@ -64,6 +68,7 @@ func editable() []ticket.FieldSpec {
 	return []ticket.FieldSpec{
 		{Name: ticket.FieldAssignee, Label: "Assignee", Kind: ticket.KindUser},
 		{Name: "labels", Label: "Labels", Kind: ticket.KindTags},
+		{Name: FieldParent, Label: "Parent", Kind: ticket.KindTicket},
 		{Name: ticket.FieldPriority, Label: "Priority", Kind: ticket.KindSelect, Required: true, Options: options(Priorities)},
 		{Name: ticket.FieldTitle, Label: "Title", Kind: ticket.KindText, Required: true},
 	}
@@ -343,6 +348,14 @@ func (p *Provider) UpdateField(ctx context.Context, id, field string, v ticket.V
 		if field == "labels" {
 			p.touch(id, provider.ChangeTags, "Labels "+t.Fields[field].String()+" → "+v.String())
 		}
+		if field == FieldParent && v.ID != "" {
+			// The value is kept as the platform would show it.
+			parent, err := p.find(v.ID)
+			if err != nil || parent.ID == id {
+				return fmt.Errorf("%s cannot be the parent of %s", v.ID, id)
+			}
+			v.Text = parent.Key + "  " + parent.Title
+		}
 		t.Fields[field] = v
 	}
 	t.Updated = time.Now()
@@ -439,6 +452,31 @@ func (p *Provider) Suggest(ctx context.Context, _, field, query string) ([]strin
 		}
 	}
 	slices.Sort(out)
+	return out, nil
+}
+
+// The provider searches the tickets a parent can be.
+var _ provider.Finder = (*Provider)(nil)
+
+// Find searches the tickets that can be the parent of a ticket, for the
+// parent field: every other ticket whose key or title contains query, in
+// the order of the fixtures.
+func (p *Provider) Find(ctx context.Context, id, field, query string) ([]ticket.Ticket, error) {
+	if err := p.wait(ctx); err != nil {
+		return nil, err
+	}
+	if field != FieldParent {
+		return nil, nil
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []ticket.Ticket
+	for _, t := range p.tickets {
+		if t.ID != id && strings.Contains(strings.ToLower(t.Key+" "+t.Title), q) {
+			out = append(out, ticket.Ticket{ID: t.ID, Key: t.Key, Title: t.Title, Status: t.Status, Type: t.Type, URL: t.URL})
+		}
+	}
 	return out, nil
 }
 

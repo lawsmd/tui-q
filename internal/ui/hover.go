@@ -19,7 +19,7 @@ var hot = map[string]bool{
 	idField: true, idFile: true, idSection: true, idLink: true, idCommentOrder: true, idCommentCopy: true,
 	idCommentSend: true, idCommentDiscard: true, idCommentKind: true,
 	idMenuItem: true, idFormCancel: true,
-	idPickTag: true, idPickItem: true, idPickSave: true, idPickCancel: true,
+	idPickTag: true, idPickItem: true, idPickSave: true, idPickClear: true, idPickCancel: true,
 }
 
 // lit returns the layer to draw for l: l itself, or a copy with its colours

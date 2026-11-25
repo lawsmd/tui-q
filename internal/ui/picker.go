@@ -25,6 +25,9 @@ const (
 	// pickMaxWidth is the widest the box grows when the field it edits
 	// is in a column wider than the sidebar.
 	pickMaxWidth = 48
+	// pickTicketWidth is the width of the box when it lists tickets, each
+	// a key and a title on one line.
+	pickTicketWidth = 64
 )
 
 // pickDelay is how long the tag box waits after a key before it searches,
@@ -35,9 +38,22 @@ var pickDelay = 150 * time.Millisecond
 // the field, inside the column the field is in, and lists the tags as they
 // will be saved, a line to search in, and the tags the search found. It
 // takes the keyboard while it is open, and saves the tags in one write.
+//
+// The same box sets a field that holds a ticket. It then shows the ticket
+// the field holds, a line to search in, and the tickets the search found,
+// the likeliest ones before anything is typed. A ticket picked is written
+// to the field at once.
 type picker struct {
 	t     ticket.Ticket
 	field string
+	// one says the box picks one ticket, and edits no list of tags.
+	// tickets are the ones the last search found, searched whether a
+	// search has come back, and required whether the field must hold a
+	// ticket.
+	one      bool
+	tickets  []ticket.Ticket
+	searched bool
+	required bool
 	// start is the tags when the box opened, and items the tags as edited.
 	start []string
 	items []string
@@ -58,21 +74,29 @@ type picker struct {
 // the box has waited for more keys.
 type pickSearchMsg struct{ seq int }
 
-// pickFoundMsg carries the tags a search for query found.
+// pickFoundMsg carries the tags a search for query found, or the tickets
+// when the box picks one.
 type pickFoundMsg struct {
-	seq    int
-	query  string
-	values []string
+	seq     int
+	query   string
+	values  []string
+	tickets []ticket.Ticket
 }
 
 // openPicker opens the tag box under the label of a field of an open
-// ticket.
+// ticket. For a field that holds a ticket it opens as the search for one,
+// and starts the search for the likeliest tickets.
 func (m *Model) openPicker(tab *ticketTab, name string) tea.Cmd {
+	spec, _ := tab.t.Spec(name)
+	one := spec.Kind == ticket.KindTicket
 	in := textinput.New()
 	in.Prompt = ""
 	in.Placeholder = "search tags"
 	if _, ok := m.prov.(provider.Suggester); !ok {
 		in.Placeholder = "type a tag"
+	}
+	if one {
+		in.Placeholder = "search tickets"
 	}
 	st := in.Styles()
 	st.Focused.Text, st.Blurred.Text = m.styles.MenuItem, m.styles.MenuItem
@@ -86,6 +110,12 @@ func (m *Model) openPicker(tab *ticketTab, name string) tea.Cmd {
 		items: slices.Clone(current),
 		in:    in,
 		at:    tab.fieldAt[name],
+
+		one:      one,
+		required: spec.Required,
+	}
+	if one {
+		return tea.Batch(m.picker.in.Focus(), m.pickSearch(pickSearchMsg{seq: m.picker.seq}))
 	}
 	return m.picker.in.Focus()
 }
@@ -104,10 +134,29 @@ func (p *picker) text() string { return strings.TrimSpace(p.in.Value()) }
 // current reports whether the results are those of the text typed.
 func (p *picker) current() bool { return p.query == p.text() }
 
+// waiting reports whether the search for the text typed is still running.
+func (p *picker) waiting() bool {
+	if p.one {
+		return !p.searched || !p.current()
+	}
+	return p.text() != "" && !p.current()
+}
+
 // choices are the lines under the search: the tags found that the ticket
 // does not have, then the text typed as a new tag when no tag is spelt
-// that way. A search still running has none.
+// that way. A search still running has none. In a search for a ticket
+// they are the tickets found, the key and title of each.
 func (p *picker) choices() []string {
+	if p.one {
+		if p.waiting() {
+			return nil
+		}
+		out := make([]string, len(p.tickets))
+		for i, t := range p.tickets {
+			out[i] = t.Key + "  " + t.Title
+		}
+		return out
+	}
 	text := p.text()
 	if text == "" || !p.current() {
 		return nil
@@ -140,18 +189,41 @@ func (m *Model) pickAdd(tag string) {
 	p.seq++
 }
 
-// pickChoose adds the choice at n.
-func (m *Model) pickChoose(n int) {
+// pickChoose adds the choice at n. In a search for a ticket it closes the
+// box and writes that ticket to the field, unless the field holds it.
+func (m *Model) pickChoose(n int) tea.Cmd {
 	p := m.picker
 	choices := p.choices()
 	if n < 0 || n >= len(choices) {
-		return
+		return nil
+	}
+	if p.one {
+		t := p.tickets[n]
+		m.picker = nil
+		if p.t.Field(p.field).ID == t.ID {
+			return nil
+		}
+		return m.setField(p.t, p.field, ticket.Value{Text: t.Key, ID: t.ID}, nil)
 	}
 	tag := choices[n]
 	if n == len(choices)-1 && tag == newTag(p.text()) {
 		tag = p.text()
 	}
 	m.pickAdd(tag)
+	return nil
+}
+
+// clearable reports whether a search for a ticket offers to empty the
+// field: the field holds a ticket and can do without one.
+func (p *picker) clearable() bool {
+	return p.one && !p.required && p.t.Field(p.field).String() != ""
+}
+
+// pickClear closes the box and empties the field.
+func (m *Model) pickClear() tea.Cmd {
+	p := m.picker
+	m.picker = nil
+	return m.setField(p.t, p.field, ticket.Value{}, nil)
 }
 
 // pickRemove takes the tag at n off the list.
@@ -174,7 +246,8 @@ func (m *Model) pickSave() tea.Cmd {
 
 // pickKey handles a key while the tag box is open. Enter adds the result
 // under the cursor, or each of a list typed with commas, and saves when
-// nothing is typed. Backspace on an empty line takes off the last tag.
+// nothing is typed. Backspace on an empty line takes off the last tag. In
+// a search for a ticket, enter picks the ticket under the cursor.
 func (m *Model) pickKey(msg tea.KeyPressMsg) tea.Cmd {
 	p := m.picker
 	switch msg.String() {
@@ -192,6 +265,8 @@ func (m *Model) pickKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		text := p.text()
 		switch {
+		case p.one:
+			return m.pickChoose(p.cursor)
 		case text == "":
 			return m.pickSave()
 		case strings.Contains(text, ","):
@@ -199,12 +274,14 @@ func (m *Model) pickKey(msg tea.KeyPressMsg) tea.Cmd {
 				m.pickAdd(tag)
 			}
 		default:
-			m.pickChoose(p.cursor)
+			return m.pickChoose(p.cursor)
 		}
 		return nil
 	case "backspace":
 		if p.in.Value() == "" {
-			m.pickRemove(len(p.items) - 1)
+			if !p.one {
+				m.pickRemove(len(p.items) - 1)
+			}
 			return nil
 		}
 	}
@@ -228,13 +305,17 @@ func (m *Model) pickTyped() tea.Cmd {
 
 // pickSearch searches for the text of the box if no key came while it
 // waited. A platform that cannot search its tags finds none, and the box
-// offers the text as a new tag.
+// offers the text as a new tag. A search for a ticket runs with nothing
+// typed too, and then asks for the likeliest tickets.
 func (m *Model) pickSearch(msg pickSearchMsg) tea.Cmd {
 	p := m.picker
 	if p == nil || msg.seq != p.seq {
 		return nil
 	}
 	query := p.text()
+	if p.one {
+		return m.pickFind(query)
+	}
 	sg, ok := m.prov.(provider.Suggester)
 	if query == "" || !ok {
 		p.query, p.found = query, nil
@@ -250,18 +331,42 @@ func (m *Model) pickSearch(msg pickSearchMsg) tea.Cmd {
 	})
 }
 
+// pickFind searches for the tickets the field of the box can hold that
+// match query.
+func (m *Model) pickFind(query string) tea.Cmd {
+	p := m.picker
+	finder, ok := m.prov.(provider.Finder)
+	if !ok {
+		p.query, p.tickets, p.searched = query, nil, true
+		return nil
+	}
+	label := "Searching for " + query
+	if query == "" {
+		label = "Finding tickets for " + m.label(p.field)
+	}
+	t, field, seq := p.t, p.field, p.seq
+	return m.start(label, ops.Background, func(ctx context.Context) (tea.Msg, error) {
+		tickets, err := finder.Find(ctx, t.ID, field, query)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", t.Key, err)
+		}
+		return pickFoundMsg{seq: seq, query: query, tickets: tickets}, nil
+	})
+}
+
 // pickFound shows the results of a search, unless the text has changed
 // since it started.
 func (m *Model) pickFound(msg pickFoundMsg) {
 	if p := m.picker; p != nil && msg.seq == p.seq {
-		p.query, p.found = msg.query, msg.values
+		p.query, p.found, p.tickets, p.searched = msg.query, msg.values, msg.tickets, true
 	}
 }
 
 // pickGesture handles the mouse while the tag box is open. A click on a
 // tag takes it off, a click on a result adds it, and the wheel scrolls the
 // results. A click outside the box closes it when nothing has changed, and
-// does nothing otherwise, so a stray click loses no edits.
+// does nothing otherwise, so a stray click loses no edits. In a search for
+// a ticket, a click on a result picks that ticket.
 func (m *Model) pickGesture(ev hit.Event) tea.Cmd {
 	p := m.picker
 	kind, n := splitID(ev.ID)
@@ -271,9 +376,11 @@ func (m *Model) pickGesture(ev hit.Event) tea.Cmd {
 		case idPickTag:
 			m.pickRemove(n)
 		case idPickItem:
-			m.pickChoose(n)
+			return m.pickChoose(n)
 		case idPickSave:
 			return m.pickSave()
+		case idPickClear:
+			return m.pickClear()
 		case idPickCancel:
 			m.picker = nil
 		case idPicker:
@@ -289,8 +396,9 @@ func (m *Model) pickGesture(ev hit.Event) tea.Cmd {
 }
 
 // pickerLayers draws the tag box under the label of its field, as wide as
-// the column the field is in and no wider than pickMaxWidth. Where there is
-// no room under the label the box goes above it.
+// the column the field is in and no wider than pickMaxWidth, or
+// pickTicketWidth wide when it lists tickets. Where there is no room under
+// the label the box goes above it.
 func (m *Model) pickerLayers() []*lipgloss.Layer {
 	s := m.styles
 	p := m.picker
@@ -300,6 +408,9 @@ func (m *Model) pickerLayers() []*lipgloss.Layer {
 		}
 	}
 	w := clamp(p.at.w, min(sidebarMaxWidth, m.w), min(pickMaxWidth, m.w))
+	if p.one {
+		w = min(pickTicketWidth, m.w)
+	}
 	inner := max(w-4, 1)
 
 	type spot struct {
@@ -311,7 +422,13 @@ func (m *Model) pickerLayers() []*lipgloss.Layer {
 	var spots []spot
 
 	// The tags, as many to a line as fit, each a button that takes it off.
-	if len(p.items) == 0 {
+	// A search for a ticket has the ticket the field holds in their place.
+	switch held := p.t.Field(p.field).String(); {
+	case p.one && held != "":
+		lines = append(lines, s.MenuItem.Render(fit(held, inner)))
+	case p.one:
+		lines = append(lines, s.PickHint.Render(fit("none", inner)))
+	case len(p.items) == 0:
 		lines = append(lines, s.PickHint.Render(fit("no tags", inner)))
 	}
 	var line strings.Builder
@@ -346,10 +463,12 @@ func (m *Model) pickerLayers() []*lipgloss.Layer {
 	// The results, scrolled to keep the cursor in view.
 	choices := p.choices()
 	switch {
-	case p.text() == "":
-	case !p.current():
+	case p.waiting():
 		lines = append(lines, s.PickHint.Render(fit("searching...", inner)))
-	case len(choices) == 0:
+	case len(choices) > 0, !p.one && p.text() == "":
+	case p.one:
+		lines = append(lines, s.PickHint.Render(fit("no tickets found", inner)))
+	default:
 		lines = append(lines, s.PickHint.Render(fit("the ticket has every tag that matches", inner)))
 	}
 	rows := min(len(choices), pickRows, max(m.floor()-11, 1))
@@ -375,14 +494,28 @@ func (m *Model) pickerLayers() []*lipgloss.Layer {
 	}
 
 	hint := "enter adds, esc cancels"
-	if p.text() == "" {
+	switch {
+	case p.one:
+		hint = "enter picks, esc cancels"
+	case p.text() == "":
 		hint = "enter saves, esc cancels"
 	}
 	lines = append(lines, s.PickHint.Render(fit(hint, inner)))
-	save, cancel := s.Button.Render("save"), s.Button.Render("cancel")
-	spots = append(spots,
-		spot{idPickSave, save, 0, len(lines)},
-		spot{idPickCancel, cancel, lipgloss.Width(save) + 1, len(lines)})
+	// The buttons: save for a list of tags, clear for a ticket that can
+	// be taken off, and cancel.
+	bx := 0
+	button := func(id, name string) {
+		b := s.Button.Render(name)
+		spots = append(spots, spot{id, b, bx, len(lines)})
+		bx += lipgloss.Width(b) + 1
+	}
+	switch {
+	case !p.one:
+		button(idPickSave, "save")
+	case p.clearable():
+		button(idPickClear, "clear")
+	}
+	button(idPickCancel, "cancel")
 	lines = append(lines, s.MenuItem.Render(blank(inner, 1)))
 
 	// In a short pane the box loses lines from the top, the tags first, and

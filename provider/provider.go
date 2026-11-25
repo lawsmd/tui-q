@@ -145,6 +145,17 @@ type Suggester interface {
 	Suggest(ctx context.Context, id, field, query string) ([]string, error)
 }
 
+// Finder is a Provider that can search the tickets a field can hold, for a
+// field of kind ticket.KindTicket, such as the parent of a ticket.
+type Finder interface {
+	// Find returns the tickets that field of the ticket id can be set to
+	// and that match query, the best matches first. field is the
+	// profile's name for the field. An empty query asks for the likeliest
+	// tickets. Each ticket has its ID, Key and Title, and may have its
+	// Status and Type: none is loaded in full.
+	Find(ctx context.Context, id, field, query string) ([]ticket.Ticket, error)
+}
+
 // AttachmentReader is a Provider that can read the files on a ticket. The
 // interface opens an attachment only for a provider that implements it.
 type AttachmentReader interface {

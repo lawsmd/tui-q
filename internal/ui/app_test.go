@@ -244,7 +244,12 @@ func TestFrameMatchesPaneAtEverySize(t *testing.T) {
 	clickLayer(t, m, idCommentOrder)
 	m.tabs[0].offset, m.tabs[0].sideOffset = 1000, 1000
 	checkFrames(t, m, "ticket scrolled to the end")
+	// A selection that runs to the last cell of its rows.
+	m.sel = &selection{ax: 2, ay: 3, x: 5, y: minHeight - 1, clip: area{w: minWidth, h: minHeight}}
+	checkFrames(t, m, "ticket with text selected")
 	m.activeTab = -1
+	checkFrames(t, m, "table with text selected")
+	m.sel = nil
 	checkFrames(t, m, "table")
 
 	m.activeQueue = 2

@@ -66,12 +66,13 @@ const (
 	idField      = "field"
 	idForm       = "form"
 	idFormCancel = "formcancel"
-	// idPicker is the tag box; the others are a tag in it, a search
-	// result, and its buttons.
+	// idPicker is the tag box, which is also the search for a ticket; the
+	// others are a tag in it, a search result, and its buttons.
 	idPicker     = "picker"
 	idPickTag    = "picktag"
 	idPickItem   = "pickitem"
 	idPickSave   = "picksave"
+	idPickClear  = "pickclear"
 	idPickCancel = "pickcancel"
 	idGear       = "gear"
 	idAction     = "action"
@@ -162,6 +163,8 @@ type Model struct {
 	actions []ext.Action
 	// sections are the instance's own sections of the ticket sidebar.
 	sections []ext.Section
+	// fields are the instance's own fields of the ticket sidebar.
+	fields []ext.Fields
 
 	w, h int
 
@@ -189,9 +192,11 @@ type Model struct {
 	// carried. All are nil most of the time.
 	menu *menu
 	form *form
-	// picker is the open tag box, or nil.
+	// picker is the open tag box or search for a ticket, or nil.
 	picker *picker
 	drag   *drag
+	// sel is the text being selected with the mouse, or nil.
+	sel *selection
 	// resize is the column edge being dragged, or nil.
 	resize *resize
 	// tabDrag is the ticket tab being dragged, or nil, and tabSpans where
@@ -270,6 +275,9 @@ type Options struct {
 	// Sections are the instance's own sections at the top of the ticket
 	// sidebar.
 	Sections []ext.Section
+	// Fields are the instance's own fields under the profile's fields in
+	// the ticket sidebar.
+	Fields []ext.Fields
 	// Ticket is the ID of one ticket to start on. When it is set the
 	// interface loads no queue: it shows that ticket, and the tickets
 	// opened from it or from the jump box, each in a tab.
@@ -320,6 +328,7 @@ func New(prof *profile.Profile, prov provider.Provider, opts Options) *Model {
 		prefs:       opts.Prefs,
 		actions:     opts.Actions,
 		sections:    opts.Sections,
+		fields:      opts.Fields,
 		drafts:      opts.Drafts,
 		files:       opts.Files,
 		openFile:    browser.OpenFile,
@@ -815,6 +824,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.blocked() {
 			m.mouse.Cancel()
 			m.drag = nil
+			m.sel = nil
 			m.tabDrag = nil
 			m.cancelResize()
 			return m, nil
@@ -824,6 +834,12 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmds []tea.Cmd
 		for _, ev := range m.mouse.Handle(msg, m.at) {
+			if m.sel != nil {
+				// A selection ends with the button coming up, whatever has
+				// opened over the view since it began.
+				cmds = append(cmds, m.selectGesture(ev))
+				continue
+			}
 			if m.form != nil {
 				// The form takes the keyboard; the mouse can only cancel it.
 				if ev.Kind == hit.Click && ev.ID == idFormCancel {
@@ -923,6 +939,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		switch {
 		case m.menu != nil:
 			m.menu = nil
+		case m.sel != nil:
+			m.sel = nil
+			m.mouse.Cancel()
 		case m.drag != nil:
 			m.drag = nil
 			m.mouse.Cancel()
@@ -1201,7 +1220,8 @@ func (m *Model) scroll(ev hit.Event) {
 }
 
 // startDrag picks up a card, a ticket tab or the edge of a table column. A
-// drag that starts anywhere else is ignored.
+// drag that starts anywhere else selects text. Anything new that can be
+// dragged is given its drag here, before the selection takes it.
 func (m *Model) startDrag(ev hit.Event) {
 	kind, n := splitID(ev.ID)
 	if kind == idTicketTab {
@@ -1212,7 +1232,11 @@ func (m *Model) startDrag(ev hit.Event) {
 		m.startResize(ev.X, n)
 		return
 	}
-	if kind != idCard || m.activeTab >= 0 || m.comp == nil {
+	if kind != idCard || m.activeTab >= 0 {
+		m.startSelect(ev)
+		return
+	}
+	if m.comp == nil {
 		return
 	}
 	layer := m.comp.GetLayer(ev.ID)
@@ -1246,7 +1270,7 @@ func (m *Model) View() tea.View {
 		m.hover = hover
 		m.comp = m.compose()
 	}
-	frame := m.comp.Render()
+	frame := m.render()
 	if m.blocked() {
 		frame = m.grey(frame)
 	}

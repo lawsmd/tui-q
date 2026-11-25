@@ -57,6 +57,11 @@ type ticketTab struct {
 	// last frame. sideX is 0 when the sidebar is not beside the main column.
 	sideOffset int
 	sideX      int
+	// mainArea and sideArea are where the scrolling columns were in the
+	// last frame: the main column, or the whole body when the sidebar is
+	// not beside it, and the sidebar when it is. Text selected with the
+	// mouse stays in the one it began in.
+	mainArea, sideArea area
 
 	// main caches the rendered main column for one width, with the place
 	// of each clickable label in it. Rendering Markdown on every frame
@@ -185,6 +190,7 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 	tab.fields, tab.files, tab.sectHits = nil, nil, nil
 	tab.fieldAt = map[string]area{}
 	tab.sideX = 0
+	tab.mainArea, tab.sideArea = area{}, area{}
 	if body.h <= 0 || body.w <= 0 {
 		return layers
 	}
@@ -252,6 +258,7 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 		layers = append(layers, m.composerLayers(tab.t, box)...)
 	}
 	tab.offset = column(c, lines, labels, tab.offset)
+	tab.mainArea = c
 	if head == nil {
 		return layers
 	}
@@ -263,7 +270,8 @@ func (tab *ticketTab) layers(m *Model, a area) []*lipgloss.Layer {
 	tab.sideX = c.x + c.w + 3
 	sw := tab.sideWidth(m)
 	right, rightLabels := tab.sidebarLines(m, sw)
-	tab.sideOffset = column(area{tab.sideX, c.y, sw, c.h}, right, rightLabels, tab.sideOffset)
+	tab.sideArea = area{tab.sideX, c.y, sw, c.h}
+	tab.sideOffset = column(tab.sideArea, right, rightLabels, tab.sideOffset)
 	return layers
 }
 
@@ -597,13 +605,14 @@ func commenterColours(comments []ticket.Comment, palette []color.Color) map[stri
 }
 
 // sidebarLines is the instance's sections, then the profile's sidebar
-// fields under a rule, a label over each value, then the buttons of the
-// actions placed under the fields, then the tickets this one is linked to.
+// fields and the instance's under a rule, a label over each value, then
+// the buttons of the actions placed under the fields, then the tickets
+// this one is linked to.
 func (tab *ticketTab) sidebarLines(m *Model, w int) ([]string, []labelLine) {
 	s := m.styles
 	lines, labels := tab.sectionLines(m, w)
 	lines = append(lines, s.rule(ext.DetailsSection, w), "")
-	for _, name := range m.prof.Ticket.Sidebar {
+	for _, name := range tab.sideFields(m) {
 		if !tab.shows(name) {
 			continue
 		}
@@ -619,6 +628,25 @@ func (tab *ticketTab) sidebarLines(m *Model, w int) ([]string, []labelLine) {
 	}
 	lines, labels = tab.sideButtons(m, ext.DetailsSection, w, lines, labels)
 	return tab.linkLines(m, w, lines, labels)
+}
+
+// sideFields names the fields of the sidebar for this ticket: the
+// profile's, then the instance's that apply to the ticket and are not
+// already there.
+func (tab *ticketTab) sideFields(m *Model) []string {
+	names := m.prof.Ticket.Sidebar
+	for _, f := range m.fields {
+		if f.Applies != nil && !f.Applies(tab.t) {
+			continue
+		}
+		for _, name := range f.Names {
+			if !slices.Contains(names, name) {
+				// Clipped, so the profile's own list is never written to.
+				names = append(slices.Clip(names), name)
+			}
+		}
+	}
+	return names
 }
 
 // linksSection is the title of the sidebar section that lists the tickets
@@ -773,7 +801,7 @@ func (tab *ticketTab) sideWidth(m *Model) int {
 		}
 	}
 	fits(ruleIndent + 2 + lipgloss.Width(ext.DetailsSection))
-	for _, name := range m.prof.Ticket.Sidebar {
+	for _, name := range tab.sideFields(m) {
 		if !tab.shows(name) {
 			continue
 		}

@@ -26,7 +26,16 @@ looks.
   when the provider can search the field's values (`provider.Suggester`), and the
   matches the ticket lacks, with the words typed offered as a new tag. Enter adds a
   match, or each of a list typed with commas, and saves when nothing is typed. The box
-  writes once, on save. Azure DevOps searches the project's tags.
+  writes once, on save. Azure DevOps searches the project's tags, and Jira the
+  labels of the site.
+- A field that holds another ticket (`ticket.KindTicket`) opens the same box as a
+  search for a ticket, 64 cells wide. It shows the ticket the field holds, the
+  likeliest tickets before anything is typed, and the tickets a search finds
+  (`provider.Finder`). Enter or a click writes the ticket picked at once, and `clear`
+  empties a field that can do without one. Jira's parent is such a field: the search
+  finds the issues one level above the ticket in Jira's hierarchy, which for a story,
+  a task or a bug are the epics. A key, a link or a number finds that issue, and words
+  find the summaries of the issues not yet done, those of the ticket's project first.
 - Comments can be added from the ticket view. Existing comments cannot be edited: the
   ticket model holds no ID for a comment and not the body as the platform stores it.
 - The top border of each comment has `copy` at its right end. A click puts the comment
@@ -45,6 +54,7 @@ instance first needs it.
 | Extension | Purpose |
 |---|---|
 | `ext.Action` | a button in the ticket view and a context menu entry; gets the ticket, the provider, the answers to its own questions, and a progress reporter that writes to the status bar. `Section` puts its button at the foot of a sidebar section instead of the row over the title. Built; passed with `tuiq.WithActions` |
+| `ext.Fields` | fields of the profile added under the profile's sidebar fields for the tickets `Applies` picks, such as those of one project. Built; passed with `tuiq.WithFields` |
 | `ext.FieldRenderer` | custom drawing of one field in tables, cards and the sidebar |
 | `ext.Theme` | styles for the whole program |
 | `ext.Panel` | an extra section in the ticket view |
@@ -132,6 +142,11 @@ and `ToTicket`, so an instance can build a queue of its own from them.
   drag, drop and wheel against layer IDs.
 - A dragged card is drawn as a top layer with no ID, so the hit test reports the lane
   under it.
+- A drag over anything but a ticket tab, a card or the edge of a column selects text,
+  and the release copies it through the terminal (OSC 52). The program takes every
+  mouse event, which stops the terminal and the multiplexer selecting in it. The
+  selection is read from the cells of the frame, stays in one column of a ticket, and
+  ends at the edge of the view: it does not scroll, and a double click selects nothing.
 - Tables drop low-priority columns when narrow, then scroll sideways with the first
   column, the title and the icon columns pinned. The line between two column headings
   is a handle: a drag on it sizes the column next to it, and the title takes the rest.

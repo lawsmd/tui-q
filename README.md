@@ -114,6 +114,36 @@ The Links section shows each relation once, in Jira's words for this ticket's si
 status on one line, title on the next. A click on a key opens that ticket in a tab,
 whichever project it is in. A ticket read from Azure DevOps lists no links yet.
 
+## Parent, labels and components
+
+A field of the profile can hold another ticket. Jira's parent is one:
+
+```toml
+[ticket]
+sidebar = ["status", "assignee", "parent", "labels", "components"]
+
+[fields.parent]
+id = "parent"
+
+[fields.labels]
+id = "labels"
+
+[fields.components]
+id = "components"
+```
+
+The sidebar shows the key and title of the parent. A click on the label opens a search
+for the tickets that can be the parent: for a story, a task or a bug, the epics. The box
+lists the open epics of the ticket's project before anything is typed. A key, a link or
+a number finds that ticket, and words find the open epics whose titles have them, in any
+project. Enter or a click sets the parent, and `clear` takes it off.
+
+The labels are edited in the tag box, which searches the labels of the site as they are
+typed. The components are picked from those of the project.
+
+A field with no value is left out of the sidebar of a ticket whose edit screen in Jira
+lacks it. An instance can also add fields for some tickets only, with `tuiq.WithFields`.
+
 ## Try it
 
 ```
@@ -127,6 +157,7 @@ go run ./cmd/tq
 | Click the key of a linked ticket | open that ticket in a ticket tab |
 | Click `x` on a ticket tab | close it |
 | Mouse wheel | scroll |
+| Drag over text | select it; letting go copies it to the clipboard |
 | Click `‹` or `›` on a bucket heading | previous or next page of the bucket |
 | `tab`, `shift+tab` | next and previous queue |
 | `esc` | back to the queue |
@@ -135,6 +166,12 @@ go run ./cmd/tq
 | Click `go to ticket`, or `/` | type or paste a ticket number, key or link; `enter` opens it |
 | `o` | open the ticket in the browser |
 | `q` | quit |
+
+`tq` takes every mouse event, so the terminal selects nothing in it. A drag with the left
+button selects text line by line, and in a ticket it stays in the column it began in.
+The text is copied when the button comes up, and `esc` cancels. `tq` writes the clipboard
+with the OSC 52 sequence, which the terminal has to accept. A drag that begins on a
+ticket tab, a card or the edge of a table column moves that instead.
 
 ## Profiles
 

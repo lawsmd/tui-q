@@ -39,7 +39,7 @@ card = ["key", "title", "assignee", "priority"]
 
 [ticket]
 main = ["title", "body"]
-sidebar = ["status", "type", "assignee", "priority", "labels", "created", "updated"]
+sidebar = ["status", "type", "assignee", "priority", "labels", "parent", "created", "updated"]
 comments = true
 pictures = true
 links = true
@@ -47,3 +47,7 @@ links = true
 [fields.labels]
 type = "list"
 label = "Labels"
+
+# The parent is picked from a search of the other tickets.
+[fields.parent]
+label = "Parent"
