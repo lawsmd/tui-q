@@ -64,8 +64,14 @@ func (s *selection) moveTo(x, y int) {
 	s.y = clamp(y, s.clip.y, s.clip.y+s.clip.h-1)
 }
 
-// startSelect begins a selection at the cell a drag started on.
+// startSelect begins a selection at the cell a drag started on. A drag
+// that starts on the last column of the pane selects nothing: a
+// multiplexer with a scroll bar beside the pane, as Herdr has, passes the
+// drag of its bar to the program there, and the bar must still scroll.
 func (m *Model) startSelect(ev hit.Event) {
+	if ev.X >= m.w-1 {
+		return
+	}
 	clip := m.selClip(ev.X, ev.Y)
 	if !clip.contains(ev.X, ev.Y) {
 		return

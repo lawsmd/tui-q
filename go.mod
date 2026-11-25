@@ -12,7 +12,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.14.0
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4
 	github.com/charmbracelet/x/ansi v0.11.9
-	github.com/lawsmd/slate v0.0.0-20261125191649-f622f42af1a3
+	github.com/lawsmd/slate v0.0.0-20261125193917-87ed2681e000
 	golang.org/x/net v0.39.0
 )
 

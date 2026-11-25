@@ -234,6 +234,20 @@ func TestSelectionLeavesAPictureAsItIs(t *testing.T) {
 	}
 }
 
+func TestDragFromTheLastColumnSelectsNothing(t *testing.T) {
+	// Herdr passes the drag of the scroll bar beside a pane to the program
+	// in it, on the last column.
+	m := ticketShown(t)
+	x, y := m.w-1, m.h/2
+	press(t, m, x, y, x, y+3)
+	if m.sel != nil {
+		t.Fatal("a drag from the last column began a selection")
+	}
+	if text, ok := release(m, x, y+3); ok {
+		t.Errorf("a drag from the last column copied %q", text)
+	}
+}
+
 func TestEscCancelsASelection(t *testing.T) {
 	m := ticketShown(t)
 	x, y := cellOf(t, m, "Sign in")
